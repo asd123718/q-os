@@ -1,22 +1,19 @@
 # Ket OS
 
-双击就能跑的量子操作系统。Clone 之后**不用安装 Node、不用 pip、不用任何依赖**。
+量子操作系统桌面。clone 之后**不用 npm / pip / Qiskit**。量子内核（精确态矢量、无噪声、F=1）已经打进浏览器包里。
 
-## 启动
+## 启动（双击即可）
 
-| 系统 | 怎么开 |
+必须先运行启动脚本（它会拼出 `KetOS.js` 再打开浏览器）：
+
+| 系统 | 双击 |
 |---|---|
-| Windows | 双击 `start.bat` 或 `KetOS.html` |
-| macOS | 双击 `Start.command` 或 `KetOS.html` |
-| Linux | 双击 `start.sh` 或 `KetOS.html` |
+| Windows | `START.bat` |
+| macOS | `START.command` |
+| Linux | `START.sh` |
 
-全部计算在浏览器里用无噪声态矢量完成（门保真度 100%）。计算器、逻辑器、文件指纹、Grover、传送都走量子线路测量。
+macOS 若提示无权限：`chmod +x START.command` 后再双击。
 
-## 源码
+## 功能
 
-```
-KetOS.html                 可双击的整包（内置引擎 + UI）
-quantum/kernel.py          可选 Qiskit 内核
-src/lib/quantum/           浏览器态矢量 + 24-bit ALU
-src/components/os/         桌面与应用
-```
+多窗口桌面、24-bit 量子 ALU 计算器、逻辑器、文件系统、Grover、传送、终端、任务管理器（每秒刷新 Q-CPU / Q-MEM / 量子比特）。
