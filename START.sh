@@ -25,6 +25,10 @@ if [ ! -x "$PY" ]; then
   rm -rf runtime/py
   mv runtime/python runtime/py
 fi
+if ! "$PY" -c "import numpy" >/dev/null 2>&1; then
+  echo "Installing bundled numpy (offline)..."
+  "$PY" -m pip install --disable-pip-version-check --no-index --find-links "$KETOS_ROOT/runtime/wheels" --no-deps numpy
+fi
 export KETOS_HOST="${KETOS_HOST:-127.0.0.1}"
 export KETOS_PORT="${KETOS_PORT:-8080}"
 exec "$PY" -B "$KETOS_ROOT/ketos/server.py"

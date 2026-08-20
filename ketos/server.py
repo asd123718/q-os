@@ -99,8 +99,8 @@ def main() -> None:
     ThreadingHTTPServer.allow_reuse_address = True
     httpd = ThreadingHTTPServer((host, port), Handler)
     url = f"http://127.0.0.1:{port}/" if host in ("0.0.0.0", "::") else f"http://{host}:{port}/"
-    print(f"Ket OS  CPython {ENGINE.version}  {url}", flush=True)
-    print(f"backend {ENGINE.backend_label}  engine {ENGINE.status()['engine']}", flush=True)
+    print(f"Ket OS  CPython {ENGINE.version}  numpy {ENGINE.status().get('numpy')}  {url}", flush=True)
+    print(f"backend {ENGINE.backend_label}  engine {ENGINE.status()['engine']}  {ENGINE.n}q float64  {ENGINE.status()['sv_bytes']} bytes", flush=True)
     if os.environ.get("KETOS_NO_BROWSER") not in ("1", "true", "yes"):
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     try:
