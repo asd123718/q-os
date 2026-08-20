@@ -14,6 +14,7 @@ _CHUNK = 1 << 20
 
 class Statevector:
     __slots__ = ("n", "re", "im", "rng")
+    device = "cpu"
 
     def __init__(self, n: int, rng: Callable[[], float] | None = None) -> None:
         self.n = int(n)

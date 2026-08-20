@@ -1,0 +1,572 @@
+// Ket OS float64 statevector kernels.
+// PTX sm_70 — NVIDIA driver JITs this to Turing / Ampere / Ada / Blackwell (sm_120).
+// Little-endian: qubit q is bit q of the amplitude index.
+
+.version 7.8
+.target sm_70
+.address_size 64
+
+
+.visible .entry apply2(
+    .param .u64 _re,
+    .param .u64 _im,
+    .param .u64 _npairs,
+    .param .u32 _q,
+    .param .f64 _m00r,
+    .param .f64 _m00i,
+    .param .f64 _m01r,
+    .param .f64 _m01i,
+    .param .f64 _m10r,
+    .param .f64 _m10i,
+    .param .f64 _m11r,
+    .param .f64 _m11i
+)
+{
+    .reg .u32 %tid, %ntid, %cta, %ncta, %q, %qp1;
+    .reg .u64 %pair, %npairs, %step, %t64, %one, %stride, %mask, %hi, %lo;
+    .reg .u64 %i0, %i1, %off0, %off1, %re, %im, %p0, %p1;
+    .reg .f64 %m00r, %m00i, %m01r, %m01i, %m10r, %m10i, %m11r, %m11i;
+    .reg .f64 %ar, %ai, %br, %bi, %cr, %ci, %dr, %di, %t0, %t1, %t2, %t3;
+    .reg .pred %done;
+
+    ld.param.u64 %re, [_re];
+    ld.param.u64 %im, [_im];
+    ld.param.u64 %npairs, [_npairs];
+    ld.param.u32 %q, [_q];
+    ld.param.f64 %m00r, [_m00r];
+    ld.param.f64 %m00i, [_m00i];
+    ld.param.f64 %m01r, [_m01r];
+    ld.param.f64 %m01i, [_m01i];
+    ld.param.f64 %m10r, [_m10r];
+    ld.param.f64 %m10i, [_m10i];
+    ld.param.f64 %m11r, [_m11r];
+    ld.param.f64 %m11i, [_m11i];
+
+    mov.u32 %tid, %tid.x;
+    mov.u32 %ntid, %ntid.x;
+    mov.u32 %cta, %ctaid.x;
+    mov.u32 %ncta, %nctaid.x;
+    mul.wide.u32 %pair, %cta, %ntid;
+    cvt.u64.u32 %t64, %tid;
+    add.u64 %pair, %pair, %t64;
+    mul.wide.u32 %step, %ncta, %ntid;
+
+    mov.u64 %one, 1;
+    shl.b64 %stride, %one, %q;
+    sub.u64 %mask, %stride, 1;
+    add.u32 %qp1, %q, 1;
+
+$L_a:
+    setp.ge.u64 %done, %pair, %npairs;
+    @%done bra $L_a_done;
+
+    shr.u64 %hi, %pair, %q;
+    shl.b64 %i0, %hi, %qp1;
+    and.b64 %lo, %pair, %mask;
+    or.b64 %i0, %i0, %lo;
+    add.u64 %i1, %i0, %stride;
+    shl.b64 %off0, %i0, 3;
+    shl.b64 %off1, %i1, 3;
+
+    add.u64 %p0, %re, %off0;
+    add.u64 %p1, %re, %off1;
+    ld.global.f64 %ar, [%p0];
+    ld.global.f64 %br, [%p1];
+    add.u64 %p0, %im, %off0;
+    add.u64 %p1, %im, %off1;
+    ld.global.f64 %ai, [%p0];
+    ld.global.f64 %bi, [%p1];
+
+    mul.f64 %t0, %m00r, %ar;
+    mul.f64 %t1, %m00i, %ai;
+    sub.f64 %cr, %t0, %t1;
+    mul.f64 %t0, %m01r, %br;
+    add.f64 %cr, %cr, %t0;
+    mul.f64 %t1, %m01i, %bi;
+    sub.f64 %cr, %cr, %t1;
+
+    mul.f64 %t0, %m00r, %ai;
+    mul.f64 %t1, %m00i, %ar;
+    add.f64 %ci, %t0, %t1;
+    mul.f64 %t0, %m01r, %bi;
+    add.f64 %ci, %ci, %t0;
+    mul.f64 %t1, %m01i, %br;
+    add.f64 %ci, %ci, %t1;
+
+    mul.f64 %t0, %m10r, %ar;
+    mul.f64 %t1, %m10i, %ai;
+    sub.f64 %dr, %t0, %t1;
+    mul.f64 %t0, %m11r, %br;
+    add.f64 %dr, %dr, %t0;
+    mul.f64 %t1, %m11i, %bi;
+    sub.f64 %dr, %dr, %t1;
+
+    mul.f64 %t0, %m10r, %ai;
+    mul.f64 %t1, %m10i, %ar;
+    add.f64 %di, %t0, %t1;
+    mul.f64 %t0, %m11r, %bi;
+    add.f64 %di, %di, %t0;
+    mul.f64 %t1, %m11i, %br;
+    add.f64 %di, %di, %t1;
+
+    add.u64 %p0, %re, %off0;
+    add.u64 %p1, %re, %off1;
+    st.global.f64 [%p0], %cr;
+    st.global.f64 [%p1], %dr;
+    add.u64 %p0, %im, %off0;
+    add.u64 %p1, %im, %off1;
+    st.global.f64 [%p0], %ci;
+    st.global.f64 [%p1], %di;
+
+    add.u64 %pair, %pair, %step;
+    bra $L_a;
+
+$L_a_done:
+    ret;
+}
+
+
+.visible .entry pauli_x(
+    .param .u64 _re,
+    .param .u64 _im,
+    .param .u64 _npairs,
+    .param .u32 _q
+)
+{
+    .reg .u32 %tid, %ntid, %cta, %ncta, %q, %qp1;
+    .reg .u64 %pair, %npairs, %step, %t64, %one, %stride, %mask, %hi, %lo;
+    .reg .u64 %i0, %i1, %off0, %off1, %re, %im, %p0, %p1;
+    .reg .f64 %ar, %ai, %br, %bi;
+    .reg .pred %done;
+
+    ld.param.u64 %re, [_re];
+    ld.param.u64 %im, [_im];
+    ld.param.u64 %npairs, [_npairs];
+    ld.param.u32 %q, [_q];
+
+    mov.u32 %tid, %tid.x;
+    mov.u32 %ntid, %ntid.x;
+    mov.u32 %cta, %ctaid.x;
+    mov.u32 %ncta, %nctaid.x;
+    mul.wide.u32 %pair, %cta, %ntid;
+    cvt.u64.u32 %t64, %tid;
+    add.u64 %pair, %pair, %t64;
+    mul.wide.u32 %step, %ncta, %ntid;
+    mov.u64 %one, 1;
+    shl.b64 %stride, %one, %q;
+    sub.u64 %mask, %stride, 1;
+    add.u32 %qp1, %q, 1;
+
+$L_x:
+    setp.ge.u64 %done, %pair, %npairs;
+    @%done bra $L_x_done;
+    shr.u64 %hi, %pair, %q;
+    shl.b64 %i0, %hi, %qp1;
+    and.b64 %lo, %pair, %mask;
+    or.b64 %i0, %i0, %lo;
+    add.u64 %i1, %i0, %stride;
+    shl.b64 %off0, %i0, 3;
+    shl.b64 %off1, %i1, 3;
+    add.u64 %p0, %re, %off0;
+    add.u64 %p1, %re, %off1;
+    ld.global.f64 %ar, [%p0];
+    ld.global.f64 %br, [%p1];
+    st.global.f64 [%p0], %br;
+    st.global.f64 [%p1], %ar;
+    add.u64 %p0, %im, %off0;
+    add.u64 %p1, %im, %off1;
+    ld.global.f64 %ai, [%p0];
+    ld.global.f64 %bi, [%p1];
+    st.global.f64 [%p0], %bi;
+    st.global.f64 [%p1], %ai;
+    add.u64 %pair, %pair, %step;
+    bra $L_x;
+$L_x_done:
+    ret;
+}
+
+
+.visible .entry pauli_z(
+    .param .u64 _re,
+    .param .u64 _im,
+    .param .u64 _npairs,
+    .param .u32 _q
+)
+{
+    .reg .u32 %tid, %ntid, %cta, %ncta, %q, %qp1;
+    .reg .u64 %pair, %npairs, %step, %t64, %one, %stride, %mask, %hi, %lo;
+    .reg .u64 %i0, %i1, %off1, %re, %im, %p1;
+    .reg .f64 %br, %bi, %neg;
+    .reg .pred %done;
+
+    ld.param.u64 %re, [_re];
+    ld.param.u64 %im, [_im];
+    ld.param.u64 %npairs, [_npairs];
+    ld.param.u32 %q, [_q];
+
+    mov.u32 %tid, %tid.x;
+    mov.u32 %ntid, %ntid.x;
+    mov.u32 %cta, %ctaid.x;
+    mov.u32 %ncta, %nctaid.x;
+    mul.wide.u32 %pair, %cta, %ntid;
+    cvt.u64.u32 %t64, %tid;
+    add.u64 %pair, %pair, %t64;
+    mul.wide.u32 %step, %ncta, %ntid;
+    mov.u64 %one, 1;
+    shl.b64 %stride, %one, %q;
+    sub.u64 %mask, %stride, 1;
+    add.u32 %qp1, %q, 1;
+    mov.f64 %neg, 0dBFF0000000000000; // -1.0
+
+$L_z:
+    setp.ge.u64 %done, %pair, %npairs;
+    @%done bra $L_z_done;
+    shr.u64 %hi, %pair, %q;
+    shl.b64 %i0, %hi, %qp1;
+    and.b64 %lo, %pair, %mask;
+    or.b64 %i0, %i0, %lo;
+    add.u64 %i1, %i0, %stride;
+    shl.b64 %off1, %i1, 3;
+    add.u64 %p1, %re, %off1;
+    ld.global.f64 %br, [%p1];
+    mul.f64 %br, %br, %neg;
+    st.global.f64 [%p1], %br;
+    add.u64 %p1, %im, %off1;
+    ld.global.f64 %bi, [%p1];
+    mul.f64 %bi, %bi, %neg;
+    st.global.f64 [%p1], %bi;
+    add.u64 %pair, %pair, %step;
+    bra $L_z;
+$L_z_done:
+    ret;
+}
+
+
+.visible .entry cnot(
+    .param .u64 _re,
+    .param .u64 _im,
+    .param .u64 _npairs,
+    .param .u32 _t,
+    .param .u32 _c
+)
+{
+    .reg .u32 %tid, %ntid, %cta, %ncta, %t, %c, %tp1;
+    .reg .u64 %pair, %npairs, %step, %t64, %one, %stride, %mask, %hi, %lo;
+    .reg .u64 %i0, %i1, %off0, %off1, %re, %im, %p0, %p1, %bit;
+    .reg .f64 %ar, %ai, %br, %bi;
+    .reg .pred %done, %ctrl;
+
+    ld.param.u64 %re, [_re];
+    ld.param.u64 %im, [_im];
+    ld.param.u64 %npairs, [_npairs];
+    ld.param.u32 %t, [_t];
+    ld.param.u32 %c, [_c];
+
+    mov.u32 %tid, %tid.x;
+    mov.u32 %ntid, %ntid.x;
+    mov.u32 %cta, %ctaid.x;
+    mov.u32 %ncta, %nctaid.x;
+    mul.wide.u32 %pair, %cta, %ntid;
+    cvt.u64.u32 %t64, %tid;
+    add.u64 %pair, %pair, %t64;
+    mul.wide.u32 %step, %ncta, %ntid;
+    mov.u64 %one, 1;
+    shl.b64 %stride, %one, %t;
+    sub.u64 %mask, %stride, 1;
+    add.u32 %tp1, %t, 1;
+
+$L_c:
+    setp.ge.u64 %done, %pair, %npairs;
+    @%done bra $L_c_done;
+    shr.u64 %hi, %pair, %t;
+    shl.b64 %i0, %hi, %tp1;
+    and.b64 %lo, %pair, %mask;
+    or.b64 %i0, %i0, %lo;
+    shr.u64 %bit, %i0, %c;
+    and.b64 %bit, %bit, %one;
+    setp.eq.u64 %ctrl, %bit, 0;
+    @%ctrl bra $L_c_next;
+    add.u64 %i1, %i0, %stride;
+    shl.b64 %off0, %i0, 3;
+    shl.b64 %off1, %i1, 3;
+    add.u64 %p0, %re, %off0;
+    add.u64 %p1, %re, %off1;
+    ld.global.f64 %ar, [%p0];
+    ld.global.f64 %br, [%p1];
+    st.global.f64 [%p0], %br;
+    st.global.f64 [%p1], %ar;
+    add.u64 %p0, %im, %off0;
+    add.u64 %p1, %im, %off1;
+    ld.global.f64 %ai, [%p0];
+    ld.global.f64 %bi, [%p1];
+    st.global.f64 [%p0], %bi;
+    st.global.f64 [%p1], %ai;
+$L_c_next:
+    add.u64 %pair, %pair, %step;
+    bra $L_c;
+$L_c_done:
+    ret;
+}
+
+
+.visible .entry cphase(
+    .param .u64 _re,
+    .param .u64 _im,
+    .param .u64 _npairs,
+    .param .u32 _t,
+    .param .u32 _c
+)
+{
+    .reg .u32 %tid, %ntid, %cta, %ncta, %t, %c, %tp1;
+    .reg .u64 %pair, %npairs, %step, %t64, %one, %stride, %mask, %hi, %lo;
+    .reg .u64 %i0, %i1, %off1, %re, %im, %p1, %bit;
+    .reg .f64 %br, %bi, %neg;
+    .reg .pred %done, %ctrl;
+
+    ld.param.u64 %re, [_re];
+    ld.param.u64 %im, [_im];
+    ld.param.u64 %npairs, [_npairs];
+    ld.param.u32 %t, [_t];
+    ld.param.u32 %c, [_c];
+
+    mov.u32 %tid, %tid.x;
+    mov.u32 %ntid, %ntid.x;
+    mov.u32 %cta, %ctaid.x;
+    mov.u32 %ncta, %nctaid.x;
+    mul.wide.u32 %pair, %cta, %ntid;
+    cvt.u64.u32 %t64, %tid;
+    add.u64 %pair, %pair, %t64;
+    mul.wide.u32 %step, %ncta, %ntid;
+    mov.u64 %one, 1;
+    shl.b64 %stride, %one, %t;
+    sub.u64 %mask, %stride, 1;
+    add.u32 %tp1, %t, 1;
+    mov.f64 %neg, 0dBFF0000000000000;
+
+$L_p:
+    setp.ge.u64 %done, %pair, %npairs;
+    @%done bra $L_p_done;
+    shr.u64 %hi, %pair, %t;
+    shl.b64 %i0, %hi, %tp1;
+    and.b64 %lo, %pair, %mask;
+    or.b64 %i0, %i0, %lo;
+    shr.u64 %bit, %i0, %c;
+    and.b64 %bit, %bit, %one;
+    setp.eq.u64 %ctrl, %bit, 0;
+    @%ctrl bra $L_p_next;
+    add.u64 %i1, %i0, %stride;
+    shl.b64 %off1, %i1, 3;
+    add.u64 %p1, %re, %off1;
+    ld.global.f64 %br, [%p1];
+    mul.f64 %br, %br, %neg;
+    st.global.f64 [%p1], %br;
+    add.u64 %p1, %im, %off1;
+    ld.global.f64 %bi, [%p1];
+    mul.f64 %bi, %bi, %neg;
+    st.global.f64 [%p1], %bi;
+$L_p_next:
+    add.u64 %pair, %pair, %step;
+    bra $L_p;
+$L_p_done:
+    ret;
+}
+
+
+.visible .entry mcx(
+    .param .u64 _re,
+    .param .u64 _im,
+    .param .u64 _dim,
+    .param .u64 _mask,
+    .param .u64 _tb
+)
+{
+    .reg .u32 %tid, %ntid, %cta, %ncta;
+    .reg .u64 %idx, %dim, %step, %t64, %re, %im, %mask, %tb, %m, %tbit, %j, %off0, %off1, %p0, %p1;
+    .reg .f64 %ar, %ai, %br, %bi;
+    .reg .pred %done, %hit, %low, %do;
+
+    ld.param.u64 %re, [_re];
+    ld.param.u64 %im, [_im];
+    ld.param.u64 %dim, [_dim];
+    ld.param.u64 %mask, [_mask];
+    ld.param.u64 %tb, [_tb];
+
+    mov.u32 %tid, %tid.x;
+    mov.u32 %ntid, %ntid.x;
+    mov.u32 %cta, %ctaid.x;
+    mov.u32 %ncta, %nctaid.x;
+    mul.wide.u32 %idx, %cta, %ntid;
+    cvt.u64.u32 %t64, %tid;
+    add.u64 %idx, %idx, %t64;
+    mul.wide.u32 %step, %ncta, %ntid;
+
+$L_m:
+    setp.ge.u64 %done, %idx, %dim;
+    @%done bra $L_m_done;
+    and.b64 %m, %idx, %mask;
+    setp.eq.u64 %hit, %m, %mask;
+    and.b64 %tbit, %idx, %tb;
+    setp.eq.u64 %low, %tbit, 0;
+    and.pred %do, %hit, %low;
+    @!%do bra $L_m_next;
+    or.b64 %j, %idx, %tb;
+    shl.b64 %off0, %idx, 3;
+    shl.b64 %off1, %j, 3;
+    add.u64 %p0, %re, %off0;
+    add.u64 %p1, %re, %off1;
+    ld.global.f64 %ar, [%p0];
+    ld.global.f64 %br, [%p1];
+    st.global.f64 [%p0], %br;
+    st.global.f64 [%p1], %ar;
+    add.u64 %p0, %im, %off0;
+    add.u64 %p1, %im, %off1;
+    ld.global.f64 %ai, [%p0];
+    ld.global.f64 %bi, [%p1];
+    st.global.f64 [%p0], %bi;
+    st.global.f64 [%p1], %ai;
+$L_m_next:
+    add.u64 %idx, %idx, %step;
+    bra $L_m;
+$L_m_done:
+    ret;
+}
+
+
+// partial: f64[ncta * 4] = {p0, p1, xr, xi} per block
+.visible .entry bloch(
+    .param .u64 _re,
+    .param .u64 _im,
+    .param .u64 _npairs,
+    .param .u32 _q,
+    .param .u64 _part
+)
+{
+    .reg .u32 %tid, %ntid, %cta, %ncta, %q, %qp1, %s, %other, %off, %offo, %k32;
+    .reg .u64 %pair, %npairs, %step, %t64, %one, %stride, %mask, %hi, %lo;
+    .reg .u64 %i0, %i1, %off0, %off1, %re, %im, %p0, %p1, %part, %base;
+    .reg .f64 %ar, %ai, %br, %bi, %p0a, %p1a, %xr, %xi, %t0, %t1;
+    .reg .pred %done, %take;
+    .shared .align 8 .b8 smem[8192];
+
+    ld.param.u64 %re, [_re];
+    ld.param.u64 %im, [_im];
+    ld.param.u64 %npairs, [_npairs];
+    ld.param.u32 %q, [_q];
+    ld.param.u64 %part, [_part];
+
+    mov.u32 %tid, %tid.x;
+    mov.u32 %ntid, %ntid.x;
+    mov.u32 %cta, %ctaid.x;
+    mov.u32 %ncta, %nctaid.x;
+    mul.wide.u32 %pair, %cta, %ntid;
+    cvt.u64.u32 %t64, %tid;
+    add.u64 %pair, %pair, %t64;
+    mul.wide.u32 %step, %ncta, %ntid;
+    mov.u64 %one, 1;
+    shl.b64 %stride, %one, %q;
+    sub.u64 %mask, %stride, 1;
+    add.u32 %qp1, %q, 1;
+    mov.f64 %p0a, 0d0000000000000000;
+    mov.f64 %p1a, 0d0000000000000000;
+    mov.f64 %xr, 0d0000000000000000;
+    mov.f64 %xi, 0d0000000000000000;
+
+$L_b:
+    setp.ge.u64 %done, %pair, %npairs;
+    @%done bra $L_b_red;
+    shr.u64 %hi, %pair, %q;
+    shl.b64 %i0, %hi, %qp1;
+    and.b64 %lo, %pair, %mask;
+    or.b64 %i0, %i0, %lo;
+    add.u64 %i1, %i0, %stride;
+    shl.b64 %off0, %i0, 3;
+    shl.b64 %off1, %i1, 3;
+    add.u64 %p0, %re, %off0;
+    add.u64 %p1, %re, %off1;
+    ld.global.f64 %ar, [%p0];
+    ld.global.f64 %br, [%p1];
+    add.u64 %p0, %im, %off0;
+    add.u64 %p1, %im, %off1;
+    ld.global.f64 %ai, [%p0];
+    ld.global.f64 %bi, [%p1];
+    fma.rn.f64 %p0a, %ar, %ar, %p0a;
+    fma.rn.f64 %p0a, %ai, %ai, %p0a;
+    fma.rn.f64 %p1a, %br, %br, %p1a;
+    fma.rn.f64 %p1a, %bi, %bi, %p1a;
+    fma.rn.f64 %xr, %ar, %br, %xr;
+    fma.rn.f64 %xr, %ai, %bi, %xr;
+    fma.rn.f64 %xi, %ar, %bi, %xi;
+    mul.f64 %t0, %ai, %br;
+    sub.f64 %xi, %xi, %t0;
+    add.u64 %pair, %pair, %step;
+    bra $L_b;
+
+$L_b_red:
+    shl.b32 %off, %tid, 3;
+    st.shared.f64 [smem + %off], %p0a;
+    add.u32 %off, %off, 2048;
+    st.shared.f64 [smem + %off], %p1a;
+    add.u32 %off, %off, 2048;
+    st.shared.f64 [smem + %off], %xr;
+    add.u32 %off, %off, 2048;
+    st.shared.f64 [smem + %off], %xi;
+    bar.sync 0;
+
+    mov.u32 %s, 128;
+$L_b_tree:
+    setp.ge.u32 %take, %tid, %s;
+    @%take bra $L_b_bar;
+    add.u32 %other, %tid, %s;
+    shl.b32 %off, %tid, 3;
+    shl.b32 %offo, %other, 3;
+    ld.shared.f64 %t0, [smem + %off];
+    ld.shared.f64 %t1, [smem + %offo];
+    add.f64 %t0, %t0, %t1;
+    st.shared.f64 [smem + %off], %t0;
+    add.u32 %off, %off, 2048;
+    add.u32 %offo, %offo, 2048;
+    ld.shared.f64 %t0, [smem + %off];
+    ld.shared.f64 %t1, [smem + %offo];
+    add.f64 %t0, %t0, %t1;
+    st.shared.f64 [smem + %off], %t0;
+    add.u32 %off, %off, 2048;
+    add.u32 %offo, %offo, 2048;
+    ld.shared.f64 %t0, [smem + %off];
+    ld.shared.f64 %t1, [smem + %offo];
+    add.f64 %t0, %t0, %t1;
+    st.shared.f64 [smem + %off], %t0;
+    add.u32 %off, %off, 2048;
+    add.u32 %offo, %offo, 2048;
+    ld.shared.f64 %t0, [smem + %off];
+    ld.shared.f64 %t1, [smem + %offo];
+    add.f64 %t0, %t0, %t1;
+    st.shared.f64 [smem + %off], %t0;
+$L_b_bar:
+    bar.sync 0;
+    shr.u32 %s, %s, 1;
+    setp.ne.u32 %take, %s, 0;
+    @%take bra $L_b_tree;
+
+    setp.ne.u32 %take, %tid, 0;
+    @%take bra $L_b_end;
+    mov.u32 %k32, 32;
+    mul.wide.u32 %base, %cta, %k32;
+    add.u64 %base, %part, %base;
+    mov.u32 %off, smem;
+    ld.shared.f64 %p0a, [%off];
+    st.global.f64 [%base], %p0a;
+    add.u64 %base, %base, 8;
+    add.u32 %off, %off, 2048;
+    ld.shared.f64 %p1a, [%off];
+    st.global.f64 [%base], %p1a;
+    add.u64 %base, %base, 8;
+    add.u32 %off, %off, 2048;
+    ld.shared.f64 %xr, [%off];
+    st.global.f64 [%base], %xr;
+    add.u64 %base, %base, 8;
+    add.u32 %off, %off, 2048;
+    ld.shared.f64 %xi, [%off];
+    st.global.f64 [%base], %xi;
+$L_b_end:
+    ret;
+}

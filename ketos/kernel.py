@@ -10,8 +10,9 @@ from typing import Any
 import numpy as np
 
 from .alu import run_alu
-from .hw import TARGET_QUBITS, choose_n, gib, sv_bytes
+from .hw import TARGET_QUBITS, choose_n, gib, probe_cuda, sv_bytes
 from .sv import Statevector, apply_circuit
+from .sv_gpu import make_sv
 
 N_SYS = TARGET_QUBITS
 FIDELITY = 1.0
@@ -92,20 +93,32 @@ def pack(sv: Statevector, extra: dict | None = None, shots: int | None = None, l
 class Kernel:
     def __init__(self, n: int | None = None) -> None:
         self.n = int(n) if n is not None else choose_n()
-        self.sv = Statevector(self.n)
+        self.gpu = probe_cuda()
+        self.sv = make_sv(self.n)
+        self.device = getattr(self.sv, "device", "cpu")
         self.pulse = _new_pulse()
         self._lock = threading.Lock()
         self.boot_bits: str | None = None
         self.log: list[str] = []
         self.syscalls = 0
-        self.backend_label = f"cpython-{PY_VER}"
         self.version = PY_VER
+        if self.device == "cuda" and self.gpu:
+            self.backend_label = "cuda-sv"
+            self.engine_name = "ket.statevector.cuda"
+        else:
+            self.backend_label = f"cpython-{PY_VER}"
+            self.engine_name = ENGINE
 
     def status(self) -> dict[str, Any]:
+        gpu = self.gpu or {}
         return {
             "backend": self.backend_label,
             "version": self.version,
-            "engine": ENGINE,
+            "engine": self.engine_name,
+            "device": self.device,
+            "gpu": gpu.get("name"),
+            "vram": gpu.get("vram") or 0,
+            "sm": gpu.get("sm"),
             "n_qubits": self.n,
             "allocated": self.n,
             "target_qubits": TARGET_QUBITS,
@@ -133,7 +146,8 @@ class Kernel:
             elif op == "register":
                 result = self.register()
             elif op == "reset":
-                self.sv = Statevector(self.n)
+                self.sv = make_sv(self.n)
+                self.device = getattr(self.sv, "device", "cpu")
                 self.log.append("reset ⊗ |0⟩")
                 result = {**pack(self.sv, light=self.n > 20), **self.status()}
             elif op == "run":
@@ -162,9 +176,18 @@ class Kernel:
         self.log = []
         self.syscalls = 0
         self.pulse = _new_pulse()
-        self.log.append(f"{self.backend_label} · numpy {NP_VER} · float64 · noise=off")
-        self.log.append(f"allocate {self.n} qubits in |0⟩^{self.n}  ({gib(sv_bytes(self.n))})")
-        self.sv = Statevector(self.n)
+        self.sv = make_sv(self.n)
+        self.device = getattr(self.sv, "device", "cpu")
+        if self.device == "cuda" and self.gpu:
+            self.backend_label = "cuda-sv"
+            self.engine_name = "ket.statevector.cuda"
+            self.log.append(f"CUDA {self.gpu['name']}  sm_{self.gpu['sm']}  {gib(self.gpu['vram'])} VRAM")
+            self.log.append(f"system register on GPU · {self.n}q float64 · {gib(sv_bytes(self.n))}")
+        else:
+            self.backend_label = f"cpython-{PY_VER}"
+            self.engine_name = ENGINE
+            self.log.append(f"{self.backend_label} · numpy {NP_VER} · float64 · noise=off")
+            self.log.append(f"allocate {self.n} qubits in |0⟩^{self.n}  ({gib(sv_bytes(self.n))})")
         ghz = apply_circuit(4, [{"g": "h", "q": 0}, {"g": "cx", "q": 0, "t": 1}, {"g": "cx", "q": 1, "t": 2}, {"g": "cx", "q": 2, "t": 3}])
         ghz_probs = {a["bit"]: a["p"] for a in ghz.top_amps(8)}
         self.log.append("self-test GHZ₄  H·CX·CX·CX")
@@ -175,22 +198,27 @@ class Kernel:
         if leaked:
             raise RuntimeError("GHZ self-test leaked amplitude")
         self.log.append("GHZ support = {0000, 1111} · F=1.000")
-        self.sv = apply_circuit(self.n, [{"g": "h", "q": 0}, {"g": "cx", "q": 0, "t": 1}])
-        self.log.append("kernel heartbeat: Bell(q0,q1)")
+        self.sv.h(0)
+        self.sv.cx(0, 1)
+        bell = self.sv.bloch([0, 1])
+        purity = float(bell[0].get("purity") or 0)
+        if purity > 0.72:
+            raise RuntimeError(f"Bell self-test failed purity={purity:.4f} (device={self.device})")
+        self.log.append(f"kernel heartbeat: Bell(q0,q1)  purity={purity:.3f}" + (" · GPU" if self.device == "cuda" else ""))
         self.log.append("scheduler / fs / rng banks ready")
         self.log.append(f"interpreter {sys.executable}")
         return {**pack(self.sv, light=self.n > 20), **self.status(), "ghz_probs": ghz_probs, "boot_ok": True}
 
     def idle(self) -> dict[str, Any]:
-        # Always tick the 4-qubit pulse (microseconds). Never apply2 the 28q / 4 GiB
-        # register just to animate Task Manager — that is what made "sync" look like 1 Hz.
+        # 4-qubit pulse is always CPU. The 28q register only ticks when a gate is cheap:
+        # GPU apply2 at 28q is memory-bound on ~1 TB/s GDDR, ~10 ms — fine for idle.
+        # CPU apply2 at 28q is ~1 s on DDR5, so skip.
         self.pulse.rx(0, math.pi / 17)
         self.pulse.ry(1, math.pi / 19)
         self.pulse.rz(2, math.pi / 13)
         self.pulse.rx(3, math.pi / 15)
-        if self.n <= 16:
-            if self.n > 4:
-                self.sv.rx(4, math.pi / 16)
+        if self.n > 4 and (self.device == "cuda" or self.n <= 16):
+            self.sv.rx(4, math.pi / 16)
             if self.n > 5:
                 self.sv.rz(5, math.pi / 8)
         packed = pack(self.pulse)

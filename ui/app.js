@@ -9,7 +9,7 @@ const APPS = [
   {id:"terminal",title:"终端",color:"#13a10e",w:640,h:420},
   {id:"grover",title:"Grover",color:"#9a5bd9",w:600,h:460},
   {id:"teleport",title:"量子传送",color:"#00cc6a",w:560,h:460},
-  {id:"about",title:"关于本机",color:"#4cc2ff",w:520,h:560},
+  {id:"about",title:"关于本机",color:"#4cc2ff",w:520,h:600},
 ];
 const GLYPH = {
   calc: '<rect x="7" y="4" width="18" height="24" rx="3"/><path d="M10 9h12M10 16h3v3h-3zM14.5 16h3v3h-3zM19 16h3v3h-3zM10 21h3v3h-3zM14.5 21h3v3h-3zM19 21h3v3h-3z"/>',
@@ -28,7 +28,7 @@ function tileIcon(id, size) {
   return `<svg viewBox="0 0 32 32" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[id] || ""}</svg>`;
 }
 const files = [
-  {id:"f1",name:"readme.txt",body:"Ket OS · CPython + numpy 态矢量内核 · float64 · 无噪声 · F=1\n系统寄存器默认 28 个双精度量子比特。"},
+  {id:"f1",name:"readme.txt",body:"Ket OS · 有 NVIDIA GPU 时 28q float64 态矢量在显卡上跑 · 无噪声 · F=1\n没 GPU 就用 CPython + numpy。"},
   {id:"f2",name:"bell.ket",body:"H 0\nCX 0 1"},
 ];
 let windows = [];
@@ -176,9 +176,10 @@ function applyTaskmgrQuantum(st) {
   set("tm-sys", String(meter.sys));
   set("tm-nq", String(st.n_qubits || 28));
   const meta = live.querySelector("#tm-meta");
-  if (meta) {
-    meta.textContent = `CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · float64 · 无噪声`;
-  }
+  const sim = st.device === "cuda" && st.gpu
+    ? `CUDA · ${st.gpu}`
+    : `CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""}`;
+  if (meta) meta.textContent = `${sim} · float64 · 无噪声`;
   const bloch = st.bloch || [];
   live.querySelectorAll("canvas").forEach(c => drawBloch(c, bloch[Number(c.dataset.q)]));
 }
@@ -213,7 +214,7 @@ function taskmgrView(st) {
       <div class="tm-stat"><small>系统调用</small><b id="tm-sys">${meter.sys}</b></div>
       <div class="tm-stat"><small>量子比特</small><b id="tm-nq">${st.n_qubits || 28}</b></div>
     </div>
-    <p class="muted" id="tm-meta">CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · float64 · 无噪声</p>
+    <p class="muted" id="tm-meta">${st.device === "cuda" && st.gpu ? ("CUDA · " + st.gpu) : ("CPython " + (st.python || st.version || "") + " · numpy " + (st.numpy || ""))} · float64 · 无噪声</p>
     <p class="muted">内核脉搏</p>
     <div class="qubits">${[0,1,2,3].map(i=>`<div class="q"><canvas width="56" height="56" data-q="${i}"></canvas><span>q${i}</span></div>`).join("")}</div>
     <table><thead><tr><th>窗口</th><th>状态</th><th>CPU</th><th>MEM</th></tr></thead><tbody id="tm-rows">${windows.map(w=>`<tr><td>${w.title}</td><td>${w.min?"sleep":w.id===focus?"focus":"run"}</td><td>${w.min?"1%":w.id===focus?Math.round(meter.cpu*100)+"%":Math.round(meter.cpu*40)+"%"}</td><td>${w.min?"3%":"12%"}</td></tr>`).join("")}</tbody></table>`;
@@ -232,21 +233,29 @@ function shortPath(p) {
 
 function aboutView() {
   const n = lastStatus;
-  const box = el("div", "pad about");
+  const cuda = n.device === "cuda" && n.gpu;
   const rows = [
+    ["模拟器", cuda ? ("CUDA · " + n.gpu) : "CPython + numpy"],
     ["处理器", "CPython " + (n.python || n.version || "")],
     ["加速库", "numpy " + (n.numpy || "")],
+  ];
+  if (cuda) {
+    rows.push(["显存", fmtBytes(n.vram) || "—"]);
+    if (n.sm) rows.push(["计算能力", "sm_" + n.sm]);
+  }
+  rows.push(
     ["量子比特", (n.n_qubits ?? 28) + " × float64"],
     ["态矢量", fmtBytes(n.sv_bytes) || "—"],
     ["引擎", n.engine || "ket.statevector"],
     ["噪声", "无 · 门保真度 100%"],
     ["系统调用", String(n.syscalls ?? 0)],
-  ];
+  );
   const exe = n.executable || "";
   const exeShort = shortPath(exe);
+  const box = el("div", "pad about");
   box.innerHTML = `<div class="about-hero">
       <div class="logo">${tileIcon("about", 28)}</div>
-      <div><h2>Ket OS</h2><p>量子内核在本机 CPython 里算，浏览器只画桌面。</p></div>
+      <div><h2>Ket OS</h2><p>量子内核在本机 ${cuda ? "GPU" : "CPython"} 里算，浏览器只画桌面。</p></div>
     </div>
     <div class="about-card">${rows.map(([k,v]) =>
       `<div class="kv"><span>${k}</span><b>${v ?? "—"}</b></div>`
