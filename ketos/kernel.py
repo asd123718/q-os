@@ -25,14 +25,28 @@ def djb2(text: str) -> int:
     return h
 
 
+def _qubit_entropy(b: dict) -> float:
+    x = float(b.get("x") or 0)
+    y = float(b.get("y") or 0)
+    z = float(b.get("z") or 0)
+    r = min(1.0, math.sqrt(x * x + y * y + z * z))
+    p0, p1 = (1 + r) / 2, (1 - r) / 2
+    e = 0.0
+    if p0 > 1e-12:
+        e -= p0 * math.log2(p0)
+    if p1 > 1e-12:
+        e -= p1 * math.log2(p1)
+    return e
+
+
 def pack(sv: Statevector, extra: dict | None = None, shots: int | None = None, light: bool = False) -> dict[str, Any]:
     extra = extra or {}
     n = sv.n
     if light:
         qs = [q for q in (0, 1, 4, 5) if q < n]
         bloch = sv.bloch(qs)
-        entropy = 0.0
-        occupancy = 0
+        entropy = float(sum(_qubit_entropy(b) for b in bloch))
+        occupancy = int(2 + sum(1 for b in bloch if float(b.get("purity") or 1) < 0.995))
         amps: list[dict] = []
         counts = None
     else:

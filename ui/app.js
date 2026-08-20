@@ -9,7 +9,7 @@ const APPS = [
   {id:"terminal",title:"终端",color:"#13a10e",w:640,h:420},
   {id:"grover",title:"Grover",color:"#9a5bd9",w:600,h:460},
   {id:"teleport",title:"量子传送",color:"#00cc6a",w:560,h:460},
-  {id:"about",title:"关于本机",color:"#4cc2ff",w:560,h:480},
+  {id:"about",title:"关于本机",color:"#4cc2ff",w:640,h:620},
 ];
 const GLYPH = {
   calc: '<rect x="7" y="4" width="18" height="24" rx="3"/><path d="M10 9h12M10 16h3v3h-3zM14.5 16h3v3h-3zM19 16h3v3h-3zM10 21h3v3h-3zM14.5 21h3v3h-3zM19 21h3v3h-3z"/>',
@@ -105,8 +105,8 @@ async function openApp(id) {
     id: "w" + wid++,
     app: id,
     title: meta.title,
-    x: Math.round(130 * s) + windows.length % 5 * Math.round(36 * s),
-    y: Math.round(36 * s) + windows.length % 4 * Math.round(28 * s),
+    x: Math.round(124 * s) + windows.length % 6 * Math.round(52 * s),
+    y: Math.round(18 * s) + windows.length % 6 * Math.round(34 * s),
     w: Math.min(Math.round(meta.w * Math.min(s, 1.35)), innerWidth - Math.round(48 * s)),
     h: Math.min(Math.round(meta.h * Math.min(s, 1.25)), innerHeight - bar),
     z: ++zTop,
@@ -135,31 +135,64 @@ function closeWin(id) {
 }
 
 let ticking = false;
-async function tick() {
-  if (ticking) return;
+function pulseUI() {
+  const n = windows.filter(w => !w.min).length;
+  meter.cpu = Math.min(1, 0.12 + 0.55 * (n / 6) + 0.22 * Math.min(1, meter.entropy / 4));
+  meter.mem = Math.min(1, 0.10 + 0.10 * windows.length + 0.06 * files.length);
+  const c = document.getElementById("clock");
+  if (c) c.textContent = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+  const cpu = document.getElementById("cpu");
+  if (cpu) cpu.textContent = "CPU " + Math.round(meter.cpu * 100) + "%";
+  const mem = document.getElementById("mem");
+  if (mem) mem.textContent = "RAM " + Math.round(meter.mem * 100) + "%";
+  const nq = document.getElementById("nq");
+  if (nq) nq.textContent = (lastStatus.n_qubits || 28) + "q";
+  const day = document.getElementById("clockday");
+  if (day) day.textContent = new Date().toLocaleDateString();
+  applyTaskmgrChrome();
+}
+function applyTaskmgrChrome() {
+  const live = document.getElementById("taskmgr-live");
+  if (!live) return;
+  const cpuPct = live.querySelector("#qcpu-pct");
+  const cpuBar = live.querySelector("#qcpu-bar");
+  const memPct = live.querySelector("#qmem-pct");
+  const memBar = live.querySelector("#qmem-bar");
+  if (cpuPct) cpuPct.textContent = Math.round(meter.cpu * 100) + "%";
+  if (cpuBar) cpuBar.style.width = (meter.cpu * 100) + "%";
+  if (memPct) memPct.textContent = Math.round(meter.mem * 100) + "%";
+  if (memBar) memBar.style.width = (meter.mem * 100) + "%";
+  const rows = live.querySelector("#tm-rows");
+  if (rows) {
+    rows.innerHTML = windows.map(w => `<tr><td>${w.title}</td><td>${w.min?"sleep":w.id===focus?"focus":"run"}</td><td>${w.min?"1%":w.id===focus?Math.round(meter.cpu*100)+"%":Math.round(meter.cpu*40)+"%"}</td><td>${w.min?"3%":"12%"}</td></tr>`).join("");
+  }
+}
+function applyTaskmgrQuantum(st) {
+  const live = document.getElementById("taskmgr-live");
+  if (!live) return;
+  const meta = live.querySelector("#tm-meta");
+  if (meta) {
+    meta.textContent = `${st.backend || ""} · CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · ${st.n_qubits || 28}q float64 · entropy ${meter.entropy.toFixed(3)} · occ ${meter.occ} · syscalls ${meter.sys}`;
+  }
+  const bloch = st.bloch || [];
+  live.querySelectorAll("canvas").forEach(c => drawBloch(c, bloch[Number(c.dataset.q)]));
+}
+async function quantumLoop() {
+  if (ticking) {
+    setTimeout(quantumLoop, 40);
+    return;
+  }
   ticking = true;
   try {
     const r = await ket("idle");
     meter.entropy = Number(r.entropy || 0);
     meter.occ = Number(r.occupancy || 0);
     meter.sys = Number(r.syscalls || 0);
-    const n = windows.filter(w => !w.min).length;
-    meter.cpu = Math.min(1, .2 * Math.min(1, meter.entropy / 4) + .5 * (n / 6));
-    meter.mem = Math.min(1, .08 * files.length + .12 * windows.length + meter.entropy / 8);
-    const c = document.getElementById("clock");
-    if (c) c.textContent = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
-    const cpu = document.getElementById("cpu");
-    if (cpu) cpu.textContent = "CPU " + Math.round(meter.cpu * 100) + "%";
-    const mem = document.getElementById("mem");
-    if (mem) mem.textContent = "RAM " + Math.round(meter.mem * 100) + "%";
-    const nq = document.getElementById("nq");
-    if (nq) nq.textContent = (lastStatus.n_qubits || 28) + "q";
-    const day = document.getElementById("clockday");
-    if (day) day.textContent = new Date().toLocaleDateString();
-    const live = document.getElementById("taskmgr-live");
-    if (live) live.replaceWith(taskmgrView(r));
+    applyTaskmgrQuantum(r);
+    pulseUI();
   } catch {}
   ticking = false;
+  setTimeout(quantumLoop, 40);
 }
 
 function taskmgrView(st) {
@@ -167,33 +200,36 @@ function taskmgrView(st) {
   const bloch = st.bloch || [];
   const box = el("div", "pad");
   box.id = "taskmgr-live";
-  box.innerHTML = `<div class="row"><div class="meter"><b>Q-CPU</b><span>${Math.round(meter.cpu*100)}%</span><i style="width:${meter.cpu*100}%"></i></div>
-    <div class="meter"><b>Q-MEM</b><span>${Math.round(meter.mem*100)}%</span><i style="width:${meter.mem*100}%"></i></div></div>
-    <p class="muted">${st.backend || ""} · CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · ${st.n_qubits || 28}q float64 · entropy ${meter.entropy.toFixed(3)} · syscalls ${meter.sys}</p>
+  box.innerHTML = `<div class="row"><div class="meter"><b>Q-CPU</b><span id="qcpu-pct">${Math.round(meter.cpu*100)}%</span><i id="qcpu-bar" style="width:${meter.cpu*100}%"></i></div>
+    <div class="meter"><b>Q-MEM</b><span id="qmem-pct">${Math.round(meter.mem*100)}%</span><i id="qmem-bar" style="width:${meter.mem*100}%"></i></div></div>
+    <p class="muted" id="tm-meta">${st.backend || ""} · CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · ${st.n_qubits || 28}q float64 · entropy ${meter.entropy.toFixed(3)} · occ ${meter.occ} · syscalls ${meter.sys}</p>
     <div class="qubits">${bloch.map((b,i)=>`<div class="q"><canvas width="56" height="56" data-q="${i}"></canvas><span>q${b.q ?? i}</span></div>`).join("")}</div>
-    <table><thead><tr><th>窗口</th><th>状态</th><th>CPU</th><th>MEM</th></tr></thead><tbody>${windows.map(w=>`<tr><td>${w.title}</td><td>${w.min?"sleep":w.id===focus?"focus":"run"}</td><td>${w.min?"1%":w.id===focus?Math.round(meter.cpu*100)+"%":Math.round(meter.cpu*35)+"%"}</td><td>${w.min?"3%":"12%"}</td></tr>`).join("")}</tbody></table>`;
+    <table><thead><tr><th>窗口</th><th>状态</th><th>CPU</th><th>MEM</th></tr></thead><tbody id="tm-rows">${windows.map(w=>`<tr><td>${w.title}</td><td>${w.min?"sleep":w.id===focus?"focus":"run"}</td><td>${w.min?"1%":w.id===focus?Math.round(meter.cpu*100)+"%":Math.round(meter.cpu*40)+"%"}</td><td>${w.min?"3%":"12%"}</td></tr>`).join("")}</tbody></table>`;
   queueMicrotask(() => box.querySelectorAll("canvas").forEach(c => drawBloch(c, bloch[Number(c.dataset.q)])));
   return box;
 }
 
 function aboutView() {
   const n = lastStatus;
-  const box = el("div", "pad");
+  const box = el("div", "pad about");
   const rows = [
     ["后端", n.backend],
-    ["解释器", "CPython " + (n.python || n.version)],
+    ["解释器", "CPython " + (n.python || n.version || "")],
     ["可执行文件", n.executable],
     ["引擎", n.engine],
     ["量子比特", (n.n_qubits ?? 28) + " × float64"],
     ["目标寄存器", (n.target_qubits ?? 28) + "q"],
     ["态矢量", fmtBytes(n.sv_bytes)],
     ["numpy", n.numpy],
-    ["噪声", "无"],
+    ["噪声", "关"],
     ["门保真度", "100%"],
-    ["系统调用", n.syscalls],
+    ["系统调用", String(n.syscalls ?? 0)],
   ];
-  box.innerHTML = `<h2>Ket OS</h2><p class="muted">量子计算在内置 CPython 3.12 + numpy 里跑，浏览器只负责画桌面。默认 28 个双精度量子比特。</p>
-    <dl>${rows.map(([k,v])=>`<div><dt>${k}</dt><dd class="mono">${v ?? ""}</dd></div>`).join("")}</dl>`;
+  box.innerHTML = `<h2>Ket OS</h2>
+    <p class="muted">量子内核在本机 CPython 里计算，浏览器只画桌面。默认 28 个双精度量子比特，无噪声。</p>
+    <div class="spec">${rows.map(([k,v]) =>
+      `<div class="spec-row"><span class="k">${k}</span><span class="v mono" title="${String(v ?? "").replace(/"/g,"")}">${v ?? "—"}</span></div>`
+    ).join("")}</div>`;
   return box;
 }
 
@@ -561,8 +597,9 @@ async function boot() {
         window.__deskReady = false;
         root.innerHTML = "";
         paint();
-        const ms = (st.n_qubits || 0) >= 24 ? 2000 : 1000;
-        setInterval(tick, ms);
+        pulseUI();
+        setInterval(pulseUI, 200);
+        quantumLoop();
       }, 280);
     };
     root.append(btn);
