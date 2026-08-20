@@ -1,8 +1,0 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Desktop } from "@/components/os/desktop";
-
-export const Route = createFileRoute("/")({ component: Home });
-
-function Home() {
-  return <Desktop />;
-}
