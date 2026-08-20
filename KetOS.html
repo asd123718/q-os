@@ -1,13 +1,66 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ket OS</title>
-  <link rel="stylesheet" href="app.css" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="theme-color" content="#0b0c0e"/>
+<title>Ket OS</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0c0e'/%3E%3Cpath d='M9 7v18M15 8l10 8-10 8' fill='none' stroke='%23e8eaee' stroke-width='2.2' stroke-linecap='square'/%3E%3C/svg%3E"/>
+<style>
+html,body,#root{height:100%;margin:0;background:#0b0c0e;color:#e8eaee;font-family:ui-sans-serif,system-ui,sans-serif}
+button:not(:disabled){cursor:pointer}
+.boot{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100dvh;width:100%;background:#0b0c0e;color:#e8eaee;gap:12px;border:0}
+.boot pre{max-width:28rem;font-size:12px;color:#8b909a;text-align:left;white-space:pre-wrap}
+.mark{font-size:42px;line-height:1}
+.desk{height:100dvh;background:#0b0c0e;position:relative;overflow:hidden}
+.icons{position:absolute;top:16px;left:12px;display:flex;flex-direction:column;gap:8px;z-index:1}
+.icon{width:72px;display:flex;flex-direction:column;align-items:center;gap:4px;color:#e8eaee;background:none;border:0}
+.icon span{width:44px;height:44px;display:grid;place-items:center;border:1px solid #2a2e38;background:#12141acc;border-radius:8px}
+.icon em{font-style:normal;font-size:11px;text-shadow:0 1px 2px #000}
+.win{position:absolute;display:flex;flex-direction:column;border:1px solid #2a2e38;background:#12141a;box-shadow:0 18px 50px -24px #000000b8;border-radius:12px;overflow:hidden}
+.win.focus{border-color:#b4bcc8}
+.title{height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 12px;background:#181b22;cursor:grab;user-select:none;font-size:13px}
+.wbtn{display:flex;gap:4px}
+.wbtn button,.dock button,.keys button,button{background:#181b22;color:#e8eaee;border:1px solid #2a2e38;border-radius:6px;height:28px;min-width:28px;padding:0 8px}
+.body{flex:1;min-height:0;overflow:auto;position:relative}
+.se{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
+.dock{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;gap:6px;padding:0 8px;background:#12141af2;border-top:1px solid #2a2e38;z-index:220}
+.dock .on{background:#181b22}
+.tray{margin-left:auto;display:flex;gap:10px;font-family:ui-monospace,monospace;font-size:11px;color:#8b909a}
+.start{position:absolute;bottom:56px;left:8px;width:220px;background:#12141a;border:1px solid #2a2e38;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:4px;z-index:210}
+.pad{padding:16px;display:flex;flex-direction:column;gap:10px}
+.muted{color:#8b909a;font-size:12px}
+.mono{font-family:ui-monospace,monospace;font-size:12px}
+.screen{font-size:36px;text-align:right;font-family:ui-monospace,monospace}
+.keys{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.keys .span2{grid-column:span 2}
+.keys .eq,button.eq{background:#d5dae2;color:#0b0c0e}
+.row{display:flex;gap:8px;align-items:center}
+.wrap{flex-wrap:wrap}
+input,textarea{background:#181b22;color:#e8eaee;border:1px solid #2a2e38;border-radius:8px;padding:8px;font:inherit}
+textarea{min-height:160px;width:100%}
+.qubits{display:flex;flex-wrap:wrap;gap:8px}
+.q{display:flex;flex-direction:column;align-items:center;font-size:11px;color:#8b909a}
+.meter{flex:1;border:1px solid #2a2e38;background:#181b22;border-radius:12px;padding:10px 10px 22px;position:relative}
+.meter i{position:absolute;left:10px;bottom:10px;height:6px;background:#d5dae2;border-radius:99px}
+.meter span{float:right;font-family:ui-monospace,monospace}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{border-bottom:1px solid #2a2e38;padding:6px;text-align:left}
+.hist{display:flex;align-items:end;gap:6px;height:100px}
+.bar{display:flex;flex-direction:column;align-items:center;justify-content:end;gap:4px}
+.bar i{width:16px;background:#d5dae2;display:block}
+.cell{width:32px;height:32px;margin:2px}
+.crow{display:flex;align-items:center;gap:4px}
+.frow{display:flex;justify-content:space-between;gap:8px;padding:4px 0}
+.frow.on{background:#181b22}
+.term pre{min-height:240px;background:#181b22;padding:8px;overflow:auto}
+.danger{color:#b87a76}
+dl{display:grid;grid-template-columns:120px 1fr;gap:6px;font-size:13px}
+dt{color:#8b909a}
+</style>
 </head>
 <body>
-  <div id="root"></div>
-  <script src="KetOS.js"></script>
+<div id="root"></div>
+<script src="ketos.js"></script>
 </body>
 </html>
