@@ -1,15 +1,3 @@
-node_modules/
-.tanstack/
-.vercel/
-.output/
-dist/
-artifacts/
-screenshots/
-__pycache__/
-*.pyc
-.env
-.env.*
-*.log
-src/routeTree.gen.ts
-.node_modules.lock
 .DS_Store
+Thumbs.db
+*.log
