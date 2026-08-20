@@ -1,15 +1,15 @@
 "use strict";
 const APPS = [
-  {id:"calc",title:"计算器",w:360,h:560},
-  {id:"logic",title:"逻辑器",w:640,h:520},
-  {id:"files",title:"文件系统",w:720,h:520},
-  {id:"taskmgr",title:"任务管理器",w:720,h:540},
-  {id:"register",title:"量子寄存器",w:760,h:620},
-  {id:"circuit",title:"线路实验室",w:780,h:520},
-  {id:"terminal",title:"终端",w:640,h:420},
-  {id:"grover",title:"Grover",w:600,h:460},
-  {id:"teleport",title:"量子传送",w:560,h:460},
-  {id:"about",title:"关于本机",w:560,h:460},
+  {id:"calc",title:"计算器",mark:"＋",w:360,h:560},
+  {id:"logic",title:"逻辑器",mark:"∧",w:640,h:520},
+  {id:"files",title:"文件系统",mark:"▤",w:720,h:520},
+  {id:"taskmgr",title:"任务管理器",mark:"☰",w:720,h:540},
+  {id:"register",title:"量子寄存器",mark:"ψ",w:760,h:620},
+  {id:"circuit",title:"线路实验室",mark:"⌗",w:780,h:520},
+  {id:"terminal",title:"终端",mark:">",w:640,h:420},
+  {id:"grover",title:"Grover",mark:"G",w:600,h:460},
+  {id:"teleport",title:"量子传送",mark:"↦",w:560,h:460},
+  {id:"about",title:"关于本机",mark:"⟩",w:560,h:460},
 ];
 const files = [
   {id:"f1",name:"readme.txt",body:"Ket OS · CPython + numpy 态矢量内核 · float64 · 无噪声 · F=1\n系统寄存器默认 28 个双精度量子比特。"},
@@ -22,6 +22,22 @@ let wid = 1;
 let startOpen = false;
 const meter = {cpu:0,mem:0,entropy:0,occ:0,sys:0};
 let lastStatus = {backend:"cpython",version:"",log:[],n_qubits:28,python:"",dtype:"float64"};
+
+function uiScale() {
+  return Math.min(Math.max(window.innerWidth / 1920, 1), 2.15);
+}
+function applyScale() {
+  document.documentElement.style.setProperty("--s", uiScale().toFixed(3));
+}
+applyScale();
+let resizeTimer = 0;
+window.addEventListener("resize", () => {
+  applyScale();
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (document.querySelector(".desk")) paint();
+  }, 80);
+});
 
 async function ket(op, args) {
   const r = await fetch("/api/ket", {
@@ -67,14 +83,15 @@ function drawBloch(canvas, b) {
 
 async function openApp(id) {
   const meta = APPS.find(a => a.id === id);
+  const s = uiScale();
   const w = {
     id: "w" + wid++,
     app: id,
     title: meta.title,
-    x: 56 + windows.length % 5 * 28,
-    y: 36 + windows.length % 4 * 24,
-    w: Math.min(meta.w, innerWidth - 24),
-    h: Math.min(meta.h, innerHeight - 80),
+    x: Math.round(140 * s) + windows.length % 5 * Math.round(36 * s),
+    y: Math.round(40 * s) + windows.length % 4 * Math.round(28 * s),
+    w: Math.min(Math.round(meta.w * s), innerWidth - Math.round(48 * s)),
+    h: Math.min(Math.round(meta.h * s), innerHeight - Math.round(88 * s)),
     z: ++zTop,
     min: false,
     max: false,
@@ -92,7 +109,10 @@ function closeWin(id) {
   paint();
 }
 
+let ticking = false;
 async function tick() {
+  if (ticking) return;
+  ticking = true;
   try {
     const r = await ket("idle");
     meter.entropy = Number(r.entropy || 0);
@@ -107,9 +127,12 @@ async function tick() {
     if (cpu) cpu.textContent = "cpu " + Math.round(meter.cpu * 100) + "%";
     const mem = document.getElementById("mem");
     if (mem) mem.textContent = "mem " + Math.round(meter.mem * 100) + "%";
+    const nq = document.getElementById("nq");
+    if (nq) nq.textContent = (lastStatus.n_qubits || 28) + "q f64";
     const live = document.getElementById("taskmgr-live");
     if (live) live.replaceWith(taskmgrView(r));
   } catch {}
+  ticking = false;
 }
 
 function taskmgrView(st) {
@@ -432,7 +455,7 @@ function paint() {
   const nav = el("nav", "icons");
   APPS.forEach(a => {
     const b = el("button", "icon");
-    b.innerHTML = `<span>${a.title[0]}</span><em>${a.title}</em>`;
+    b.innerHTML = `<span>${a.mark}</span><em>${a.title}</em>`;
     b.onclick = () => openApp(a.id);
     nav.append(b);
   });

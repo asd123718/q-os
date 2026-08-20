@@ -31,4 +31,5 @@ if ! "$PY" -c "import numpy" >/dev/null 2>&1; then
 fi
 export KETOS_HOST="${KETOS_HOST:-127.0.0.1}"
 export KETOS_PORT="${KETOS_PORT:-8080}"
+export KETOS_QUIET="${KETOS_QUIET:-1}"
 exec "$PY" -B "$KETOS_ROOT/ketos/server.py"
