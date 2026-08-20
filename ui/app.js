@@ -1,16 +1,32 @@
 "use strict";
 const APPS = [
-  {id:"calc",title:"计算器",mark:"＋",w:360,h:560},
-  {id:"logic",title:"逻辑器",mark:"∧",w:640,h:520},
-  {id:"files",title:"文件系统",mark:"▤",w:720,h:520},
-  {id:"taskmgr",title:"任务管理器",mark:"☰",w:720,h:540},
-  {id:"register",title:"量子寄存器",mark:"ψ",w:760,h:620},
-  {id:"circuit",title:"线路实验室",mark:"⌗",w:780,h:520},
-  {id:"terminal",title:"终端",mark:">",w:640,h:420},
-  {id:"grover",title:"Grover",mark:"G",w:600,h:460},
-  {id:"teleport",title:"量子传送",mark:"↦",w:560,h:460},
-  {id:"about",title:"关于本机",mark:"⟩",w:560,h:460},
+  {id:"calc",title:"计算器",color:"#ca5010",w:380,h:560},
+  {id:"logic",title:"逻辑器",color:"#8764b8",w:640,h:520},
+  {id:"files",title:"文件系统",color:"#f7b500",w:720,h:520},
+  {id:"taskmgr",title:"任务管理器",color:"#0078d4",w:720,h:540},
+  {id:"register",title:"量子寄存器",color:"#00b7c3",w:760,h:620},
+  {id:"circuit",title:"线路实验室",color:"#4cc2ff",w:780,h:520},
+  {id:"terminal",title:"终端",color:"#13a10e",w:640,h:420},
+  {id:"grover",title:"Grover",color:"#9a5bd9",w:600,h:460},
+  {id:"teleport",title:"量子传送",color:"#00cc6a",w:560,h:460},
+  {id:"about",title:"关于本机",color:"#4cc2ff",w:560,h:480},
 ];
+const GLYPH = {
+  calc: '<rect x="7" y="4" width="18" height="24" rx="3"/><path d="M10 9h12M10 16h3v3h-3zM14.5 16h3v3h-3zM19 16h3v3h-3zM10 21h3v3h-3zM14.5 21h3v3h-3zM19 21h3v3h-3z"/>',
+  logic: '<path d="M6 8h7c5 0 8 3.5 8 8s-3 8-8 8H6"/><path d="M6 12h4M6 20h4"/>',
+  files: '<path d="M6 9h7l2 3h11v12H6z"/>',
+  taskmgr: '<path d="M7 18h4v6H7zM14 12h4v12h-4zM21 8h4v16h-4z"/>',
+  register: '<circle cx="16" cy="16" r="7"/><path d="M16 9v14M9 16h14"/>',
+  circuit: '<circle cx="8" cy="10" r="2"/><circle cx="16" cy="10" r="2"/><circle cx="24" cy="22" r="2"/><path d="M10 10h4M16 12v6h8"/>',
+  terminal: '<path d="M8 10l6 6-6 6M16 22h8"/>',
+  grover: '<circle cx="14" cy="14" r="6"/><path d="M19 19l6 6"/>',
+  teleport: '<circle cx="8" cy="16" r="3"/><circle cx="24" cy="16" r="3"/><path d="M11 16h10"/>',
+  about: '<circle cx="16" cy="16" r="10"/><path d="M16 14v7M16 10.5v1.5"/>',
+};
+function tileIcon(id, size) {
+  size = size || 32;
+  return `<svg viewBox="0 0 32 32" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${GLYPH[id] || ""}</svg>`;
+}
 const files = [
   {id:"f1",name:"readme.txt",body:"Ket OS · CPython + numpy 态矢量内核 · float64 · 无噪声 · F=1\n系统寄存器默认 28 个双精度量子比特。"},
   {id:"f2",name:"bell.ket",body:"H 0\nCX 0 1"},
@@ -84,29 +100,38 @@ function drawBloch(canvas, b) {
 async function openApp(id) {
   const meta = APPS.find(a => a.id === id);
   const s = uiScale();
+  const bar = Math.round(52 * s) + 20;
   const w = {
     id: "w" + wid++,
     app: id,
     title: meta.title,
-    x: Math.round(140 * s) + windows.length % 5 * Math.round(36 * s),
-    y: Math.round(40 * s) + windows.length % 4 * Math.round(28 * s),
-    w: Math.min(Math.round(meta.w * s), innerWidth - Math.round(48 * s)),
-    h: Math.min(Math.round(meta.h * s), innerHeight - Math.round(88 * s)),
+    x: Math.round(130 * s) + windows.length % 5 * Math.round(36 * s),
+    y: Math.round(36 * s) + windows.length % 4 * Math.round(28 * s),
+    w: Math.min(Math.round(meta.w * Math.min(s, 1.35)), innerWidth - Math.round(48 * s)),
+    h: Math.min(Math.round(meta.h * Math.min(s, 1.25)), innerHeight - bar),
     z: ++zTop,
     min: false,
     max: false,
+    enter: true,
   };
   windows.push(w);
   focus = w.id;
   startOpen = false;
   ket("syscall", {name:"exec", app_id: windows.length}).catch(()=>{});
   paint();
+  requestAnimationFrame(() => { w.enter = false; });
 }
 
 function closeWin(id) {
-  windows = windows.filter(w => w.id !== id);
-  focus = windows.at(-1)?.id || "";
+  const w = windows.find(x => x.id === id);
+  if (!w || w.leave) return;
+  w.leave = true;
   paint();
+  setTimeout(() => {
+    windows = windows.filter(x => x.id !== id);
+    focus = windows.filter(x => !x.min).at(-1)?.id || "";
+    paint();
+  }, 160);
 }
 
 let ticking = false;
@@ -122,13 +147,15 @@ async function tick() {
     meter.cpu = Math.min(1, .2 * Math.min(1, meter.entropy / 4) + .5 * (n / 6));
     meter.mem = Math.min(1, .08 * files.length + .12 * windows.length + meter.entropy / 8);
     const c = document.getElementById("clock");
-    if (c) c.textContent = new Date().toLocaleTimeString();
+    if (c) c.textContent = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
     const cpu = document.getElementById("cpu");
-    if (cpu) cpu.textContent = "cpu " + Math.round(meter.cpu * 100) + "%";
+    if (cpu) cpu.textContent = "CPU " + Math.round(meter.cpu * 100) + "%";
     const mem = document.getElementById("mem");
-    if (mem) mem.textContent = "mem " + Math.round(meter.mem * 100) + "%";
+    if (mem) mem.textContent = "RAM " + Math.round(meter.mem * 100) + "%";
     const nq = document.getElementById("nq");
-    if (nq) nq.textContent = (lastStatus.n_qubits || 28) + "q f64";
+    if (nq) nq.textContent = (lastStatus.n_qubits || 28) + "q";
+    const day = document.getElementById("clockday");
+    if (day) day.textContent = new Date().toLocaleDateString();
     const live = document.getElementById("taskmgr-live");
     if (live) live.replaceWith(taskmgrView(r));
   } catch {}
@@ -405,26 +432,28 @@ function appBody(id) {
 }
 
 function winEl(w) {
-  const n = el("div", "win" + (w.id===focus?" focus":"") + (w.min?" min":""));
-  n.style.left = (w.max?0:w.x)+"px";
-  n.style.top = (w.max?0:w.y)+"px";
-  n.style.width = (w.max?innerWidth:w.w)+"px";
-  n.style.height = (w.max?innerHeight-48:w.h)+"px";
+  const s = uiScale();
+  const bar = Math.round(52 * s) + 20;
+  const n = el("div", "win" + (w.id===focus?" focus":"") + (w.min?" min":"") + (w.enter?" enter":"") + (w.leave?" leave":""));
+  n.style.left = (w.max?8:w.x)+"px";
+  n.style.top = (w.max?8:w.y)+"px";
+  n.style.width = (w.max?innerWidth-16:w.w)+"px";
+  n.style.height = (w.max?innerHeight-bar:w.h)+"px";
   n.style.zIndex = String(w.z);
   if (w.min) n.style.display = "none";
   const title = el("div", "title");
   title.append(el("span", "", w.title));
   const btns = el("div", "wbtn");
-  const mn = el("button", "", "–"); mn.onclick = e => { e.stopPropagation(); w.min = true; paint(); };
-  const mx = el("button", "", "□"); mx.onclick = e => { e.stopPropagation(); w.max = !w.max; paint(); };
-  const cl = el("button", "", "×"); cl.onclick = e => { e.stopPropagation(); closeWin(w.id); };
+  const mn = el("button", "cap", "–"); mn.onclick = e => { e.stopPropagation(); w.min = true; paint(); };
+  const mx = el("button", "cap", "□"); mx.onclick = e => { e.stopPropagation(); w.max = !w.max; paint(); };
+  const cl = el("button", "cap close", "×"); cl.onclick = e => { e.stopPropagation(); closeWin(w.id); };
   btns.append(mn, mx, cl); title.append(btns);
   let drag = null;
   title.onpointerdown = e => {
-    if (w.max) return;
+    if (w.max || e.target.closest(".wbtn")) return;
     focus = w.id; w.z = ++zTop;
     drag = {dx:e.clientX-w.x, dy:e.clientY-w.y};
-    e.target.setPointerCapture(e.pointerId);
+    title.setPointerCapture(e.pointerId);
   };
   title.onpointermove = e => {
     if (!drag) return;
@@ -451,55 +480,90 @@ function winEl(w) {
 function paint() {
   const root = document.getElementById("root");
   root.innerHTML = "";
-  const desk = el("div", "desk");
+  const first = !window.__deskReady;
+  window.__deskReady = true;
+  const desk = el("div", "desk" + (first ? " desk-in" : ""));
+  desk.addEventListener("mousedown", e => {
+    if (startOpen && !e.target.closest(".start") && !e.target.closest(".tb-start")) {
+      startOpen = false;
+      document.querySelector(".start")?.classList.remove("open");
+    }
+  });
   const nav = el("nav", "icons");
   APPS.forEach(a => {
-    const b = el("button", "icon");
-    b.innerHTML = `<span>${a.mark}</span><em>${a.title}</em>`;
+    const b = el("button", "desk-icon");
+    b.innerHTML = `<span class="tile" style="background:${a.color}">${tileIcon(a.id)}</span><span class="name">${a.title}</span>`;
     b.onclick = () => openApp(a.id);
     nav.append(b);
   });
   desk.append(nav);
   windows.forEach(w => desk.append(winEl(w)));
-  if (startOpen) {
-    const s = el("div", "start");
-    APPS.forEach(a => { const b = el("button","",a.title); b.onclick = () => openApp(a.id); s.append(b); });
-    desk.append(s);
-  }
-  const dock = el("footer", "dock");
-  const ketBtn = el("button", "ket", "Ket");
-  ketBtn.onclick = () => { startOpen = !startOpen; paint(); };
-  dock.append(ketBtn);
-  windows.forEach(w => {
-    const b = el("button", w.id===focus && !w.min ? "on" : "", w.title);
-    b.onclick = () => { w.min = false; focus = w.id; w.z = ++zTop; paint(); };
-    dock.append(b);
+
+  const start = el("div", "start");
+  start.innerHTML = `<h3>已固定</h3>`;
+  const pins = el("div", "pins");
+  APPS.forEach(a => {
+    const p = el("button", "pin");
+    p.innerHTML = `<span class="tile" style="background:${a.color}">${tileIcon(a.id)}</span><span class="name">${a.title}</span>`;
+    p.onclick = () => openApp(a.id);
+    pins.append(p);
   });
+  start.append(pins);
+  desk.append(start);
+  if (startOpen) requestAnimationFrame(() => start.classList.add("open"));
+
+  const dock = el("footer", "taskbar");
+  const cluster = el("div", "tb-cluster");
+  const ketBtn = el("button", "tb-start" + (startOpen ? " open" : ""));
+  ketBtn.innerHTML = `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"><path d="M9 7v18M15 8l10 8-10 8"/></svg>`;
+  ketBtn.title = "开始";
+  ketBtn.onclick = () => { startOpen = !startOpen; paint(); };
+  cluster.append(ketBtn);
+  windows.forEach(w => {
+    const meta = APPS.find(a => a.id === w.app);
+    const b = el("button", "tb-btn" + (w.id===focus && !w.min ? " on" : ""));
+    b.innerHTML = tileIcon(w.app, 20);
+    b.style.color = meta ? meta.color : "#fff";
+    b.title = w.title;
+    b.onclick = () => {
+      if (w.min) w.min = false;
+      else if (w.id === focus) w.min = true;
+      else { focus = w.id; w.z = ++zTop; }
+      paint();
+    };
+    cluster.append(b);
+  });
+  dock.append(cluster);
+  const now = new Date();
   const tray = el("div", "tray");
-  tray.innerHTML = `<span id="cpu">cpu ${Math.round(meter.cpu*100)}%</span>
-    <span id="mem">mem ${Math.round(meter.mem*100)}%</span>
-    <span>CPython ${lastStatus.python || ""}</span>
-    <span id="nq">${lastStatus.n_qubits || 28}q f64</span>
-    <span id="clock">${new Date().toLocaleTimeString()}</span>`;
+  tray.innerHTML = `<span id="cpu">CPU ${Math.round(meter.cpu*100)}%</span>
+    <span id="mem">RAM ${Math.round(meter.mem*100)}%</span>
+    <span id="nq">${lastStatus.n_qubits || 28}q</span>
+    <div class="clock"><b id="clock">${now.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</b><small id="clockday">${now.toLocaleDateString()}</small></div>`;
   dock.append(tray);
   desk.append(dock);
   root.append(desk);
 }
 
 async function boot() {
+  applyScale();
   const root = document.getElementById("root");
   try {
     const st = await ket("boot");
     const btn = el("button", "boot");
     btn.innerHTML = `<div class="mark">⟩</div><h1>Ket OS</h1>
-      <p>内置 CPython ${st.python || st.version} + numpy ${st.numpy || ""} · ${st.n_qubits} × float64 · 无噪声 · F = 1</p>
+      <p>CPython ${st.python || st.version}  ·  numpy ${st.numpy || ""}  ·  ${st.n_qubits} × float64  ·  F = 1</p>
       <pre>${(st.log||[]).join("\n")}</pre>
-      <p>点击进入桌面</p>`;
+      <p>单击进入桌面</p>`;
     btn.onclick = () => {
-      root.innerHTML = "";
-      paint();
-      const ms = (st.n_qubits || 0) >= 24 ? 2000 : 1000;
-      setInterval(tick, ms);
+      btn.classList.add("out");
+      setTimeout(() => {
+        window.__deskReady = false;
+        root.innerHTML = "";
+        paint();
+        const ms = (st.n_qubits || 0) >= 24 ? 2000 : 1000;
+        setInterval(tick, ms);
+      }, 280);
     };
     root.append(btn);
   } catch (err) {
@@ -507,3 +571,4 @@ async function boot() {
   }
 }
 boot();
+

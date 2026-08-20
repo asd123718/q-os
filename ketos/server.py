@@ -140,14 +140,18 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError:
                 return self._send(403, b"forbidden", "text/plain")
             if candidate.is_file():
-                ctype = "text/javascript; charset=utf-8" if candidate.suffix == ".js" else "application/octet-stream"
-                if candidate.suffix == ".css":
-                    ctype = "text/css; charset=utf-8"
-                if candidate.suffix == ".html":
-                    ctype = "text/html; charset=utf-8"
-                if candidate.suffix == ".svg":
-                    ctype = "image/svg+xml"
-                return self._send(200, candidate.read_bytes(), ctype)
+                ext = candidate.suffix.lower()
+                ctypes = {
+                    ".js": "text/javascript; charset=utf-8",
+                    ".css": "text/css; charset=utf-8",
+                    ".html": "text/html; charset=utf-8",
+                    ".svg": "image/svg+xml",
+                    ".jpg": "image/jpeg",
+                    ".jpeg": "image/jpeg",
+                    ".png": "image/png",
+                    ".webp": "image/webp",
+                }
+                return self._send(200, candidate.read_bytes(), ctypes.get(ext, "application/octet-stream"))
             self._send(404, b"not found", "text/plain")
         except Exception as exc:
             if _is_hangup(exc):
