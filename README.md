@@ -1,12 +1,19 @@
 # Ket OS
 
-量子操作系统桌面。clone 之后**不用装 Node / npm / Python / 任何依赖**。
+量子操作系统。clone 之后**不用装 Python / Node / npm / Qiskit**。
 
-精确态矢量模拟，无噪声，门保真度 F = 1。浏览器就是运行时。
+仓库里带着 **CPython 3.12.14** 便携解释器（Windows / macOS / Linux）。双击 START，解释器自己解开，量子内核在 Python 里跑，浏览器只负责画桌面。
+
+精确态矢量，无噪声，门保真度 F = 1。
 
 ## 启动
 
-clone 完直接双击（`KetOS.html` 和 `ketos.js` 必须在同一目录）：
+```bash
+git clone https://github.com/asd123718/q-os.git
+cd q-os
+```
+
+然后双击：
 
 | 系统 | 双击 |
 | --- | --- |
@@ -14,21 +21,24 @@ clone 完直接双击（`KetOS.html` 和 `ketos.js` 必须在同一目录）：
 | macOS | `START.command`（若提示无权限：`chmod +x START.command`） |
 | Linux | `START.sh` |
 
-也可以直接用浏览器打开 `KetOS.html`。不需要本地服务器。
+第一次会把对应平台的 CPython 解压到 `runtime/py/`（大约半分钟），然后打开 `http://127.0.0.1:8080/`。
 
-```bash
-git clone https://github.com/asd123718/q-os.git
-cd q-os
-```
+不要直接双击 HTML。没有 Python 后端就没有量子内核。
+
+## 里面有什么
+
+- `runtime/cpython-3.12.14-*.tar.gz` — 内置解释器（astral python-build-standalone）
+- `ketos/` — 纯标准库态矢量引擎 + HTTP 服务（无 pip、无 numpy、无 Qiskit）
+- `ui/` — 桌面外壳
 
 ## 功能
 
-- 多窗口桌面：拖动、缩放、最大化 / 还原
-- 24-bit 量子 ALU 计算器（涟波全加器）
+- 多窗口桌面
+- 24-bit 量子 ALU（涟波全加器，CPython 逐位线路）
 - 逻辑器、文件系统（8-qubit 指纹）、电路、寄存器
 - Grover、量子传送
-- 任务管理器：每秒刷新 Q-CPU / Q-MEM / 8 个内核量子比特
+- 任务管理器：Q-CPU / Q-MEM / 8 个内核量子比特
 
 ## 说明
 
-这是一份**自包含发布包**。量子引擎和桌面在 `ketos.js`，样式在 `KetOS.html`。浏览器就是解释器，不要 npm install。
+这是一份自包含发布包。解释器已经打进仓库，clone 下来就能跑。
