@@ -189,7 +189,11 @@ textarea{min-height:160px;width:100%}
 .qubits{display:flex;flex-wrap:wrap;gap:8px}
 .q{display:flex;flex-direction:column;align-items:center;font-size:calc(11px * var(--s));color:var(--muted)}
 .meter{flex:1;border:1px solid var(--stroke);background:rgba(0,0,0,.2);border-radius:12px;padding:10px 10px 22px;position:relative}
-.meter i{position:absolute;left:10px;bottom:10px;height:6px;background:var(--accent);border-radius:99px}
+.meter i{position:absolute;left:10px;bottom:10px;height:6px;background:var(--accent);border-radius:99px;transition:width .18s var(--ease)}
+.spec{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.spec-row{display:flex;flex-direction:column;gap:4px;padding:12px 14px;background:rgba(255,255,255,.04);border:1px solid var(--stroke);border-radius:8px}
+.spec-row .k{font-size:calc(11px * var(--s));color:var(--muted);letter-spacing:.06em}
+.spec-row .v{font-size:calc(13px * var(--s));line-height:1.45;word-break:break-all}
 .meter span{float:right;font-family:var(--mono)}
 table{width:100%;border-collapse:collapse;font-size:calc(12px * var(--s))}
 td,th{border-bottom:1px solid var(--stroke);padding:6px;text-align:left}
@@ -212,6 +216,6 @@ dt{color:var(--muted)}
 </head>
 <body>
 <div id="root"></div>
-<script src="app.js?v=win11"></script>
+<script src="app.js?v=qa1"></script>
 </body>
 </html>
