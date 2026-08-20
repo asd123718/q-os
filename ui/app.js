@@ -4,7 +4,7 @@ const APPS = [
   {id:"logic",title:"逻辑器",w:640,h:520},
   {id:"files",title:"文件系统",w:720,h:520},
   {id:"taskmgr",title:"任务管理器",w:720,h:540},
-  {id:"register",title:"量子寄存器",w:680,h:480},
+  {id:"register",title:"量子寄存器",w:760,h:620},
   {id:"circuit",title:"线路实验室",w:780,h:520},
   {id:"terminal",title:"终端",w:640,h:420},
   {id:"grover",title:"Grover",w:600,h:460},
@@ -12,7 +12,7 @@ const APPS = [
   {id:"about",title:"关于本机",w:560,h:460},
 ];
 const files = [
-  {id:"f1",name:"readme.txt",body:"Ket OS · CPython 态矢量内核 · 无噪声 · F=1\n每个系统调用都走 Python 量子线路。"},
+  {id:"f1",name:"readme.txt",body:"Ket OS · CPython + numpy 态矢量内核 · float64 · 无噪声 · F=1\n系统寄存器默认 28 个双精度量子比特。"},
   {id:"f2",name:"bell.ket",body:"H 0\nCX 0 1"},
 ];
 let windows = [];
@@ -21,7 +21,7 @@ let focus = "";
 let wid = 1;
 let startOpen = false;
 const meter = {cpu:0,mem:0,entropy:0,occ:0,sys:0};
-let lastStatus = {backend:"cpython",version:"",log:[],n_qubits:8,python:""};
+let lastStatus = {backend:"cpython",version:"",log:[],n_qubits:28,python:"",dtype:"float64"};
 
 async function ket(op, args) {
   const r = await fetch("/api/ket", {
@@ -33,6 +33,13 @@ async function ket(op, args) {
   if (!r.ok) throw new Error(data.error || r.statusText);
   lastStatus = data;
   return data;
+}
+
+function fmtBytes(n) {
+  n = Number(n || 0);
+  if (n >= 1 << 30) return (n / (1 << 30)).toFixed(2) + " GiB";
+  if (n >= 1 << 20) return (n / (1 << 20)).toFixed(2) + " MiB";
+  return n ? n + " B" : "";
 }
 
 function el(tag, cls, text) {
@@ -112,8 +119,8 @@ function taskmgrView(st) {
   box.id = "taskmgr-live";
   box.innerHTML = `<div class="row"><div class="meter"><b>Q-CPU</b><span>${Math.round(meter.cpu*100)}%</span><i style="width:${meter.cpu*100}%"></i></div>
     <div class="meter"><b>Q-MEM</b><span>${Math.round(meter.mem*100)}%</span><i style="width:${meter.mem*100}%"></i></div></div>
-    <p class="muted">${st.backend || ""} · CPython ${st.python || st.version || ""} · ${st.n_qubits || 8}q · entropy ${meter.entropy.toFixed(3)} · syscalls ${meter.sys}</p>
-    <div class="qubits">${bloch.map((b,i)=>`<div class="q"><canvas width="56" height="56" data-q="${i}"></canvas><span>q${i}</span></div>`).join("")}</div>
+    <p class="muted">${st.backend || ""} · CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · ${st.n_qubits || 28}q float64 · entropy ${meter.entropy.toFixed(3)} · syscalls ${meter.sys}</p>
+    <div class="qubits">${bloch.map((b,i)=>`<div class="q"><canvas width="56" height="56" data-q="${i}"></canvas><span>q${b.q ?? i}</span></div>`).join("")}</div>
     <table><thead><tr><th>窗口</th><th>状态</th><th>CPU</th><th>MEM</th></tr></thead><tbody>${windows.map(w=>`<tr><td>${w.title}</td><td>${w.min?"sleep":w.id===focus?"focus":"run"}</td><td>${w.min?"1%":w.id===focus?Math.round(meter.cpu*100)+"%":Math.round(meter.cpu*35)+"%"}</td><td>${w.min?"3%":"12%"}</td></tr>`).join("")}</tbody></table>`;
   queueMicrotask(() => box.querySelectorAll("canvas").forEach(c => drawBloch(c, bloch[Number(c.dataset.q)])));
   return box;
@@ -127,12 +134,15 @@ function aboutView() {
     ["解释器", "CPython " + (n.python || n.version)],
     ["可执行文件", n.executable],
     ["引擎", n.engine],
-    ["量子比特", n.n_qubits],
+    ["量子比特", (n.n_qubits ?? 28) + " × float64"],
+    ["目标寄存器", (n.target_qubits ?? 28) + "q"],
+    ["态矢量", fmtBytes(n.sv_bytes)],
+    ["numpy", n.numpy],
     ["噪声", "无"],
     ["门保真度", "100%"],
     ["系统调用", n.syscalls],
   ];
-  box.innerHTML = `<h2>Ket OS</h2><p class="muted">量子计算在内置 CPython 3.12 里跑，浏览器只负责画桌面。</p>
+  box.innerHTML = `<h2>Ket OS</h2><p class="muted">量子计算在内置 CPython 3.12 + numpy 里跑，浏览器只负责画桌面。默认 28 个双精度量子比特。</p>
     <dl>${rows.map(([k,v])=>`<div><dt>${k}</dt><dd class="mono">${v ?? ""}</dd></div>`).join("")}</dl>`;
   return box;
 }
@@ -242,14 +252,15 @@ function registerView() {
   async function refresh(reset) {
     const r = await ket(reset ? "reset" : "register");
     const bloch = r.bloch || [];
-    qs.innerHTML = bloch.map((b,i)=>`<div class="q"><canvas width="56" height="56"></canvas><span>q${i}</span></div>`).join("");
+    qs.innerHTML = bloch.map((b,i)=>`<div class="q"><canvas width="56" height="56"></canvas><span>q${b.q ?? i}</span></div>`).join("");
     qs.querySelectorAll("canvas").forEach((c,i) => drawBloch(c, bloch[i]));
   }
   const row = el("div", "row");
   const a = el("button", "", "刷新"); a.onclick = () => refresh(false);
   const b = el("button", "", "重置 |0⟩"); b.onclick = () => refresh(true);
   row.append(a, b);
-  box.append(el("p","muted","系统寄存器 · 8 qubit · CPython 内核"), row, qs);
+  const nq = lastStatus.n_qubits || 28;
+  box.append(el("p","muted",`系统寄存器 · ${nq} × float64 · numpy 向量化内核`), row, qs);
   refresh(false);
   return box;
 }
@@ -445,7 +456,7 @@ function paint() {
   tray.innerHTML = `<span id="cpu">cpu ${Math.round(meter.cpu*100)}%</span>
     <span id="mem">mem ${Math.round(meter.mem*100)}%</span>
     <span>CPython ${lastStatus.python || ""}</span>
-    <span>8q</span>
+    <span id="nq">${lastStatus.n_qubits || 28}q f64</span>
     <span id="clock">${new Date().toLocaleTimeString()}</span>`;
   dock.append(tray);
   desk.append(dock);
@@ -458,10 +469,15 @@ async function boot() {
     const st = await ket("boot");
     const btn = el("button", "boot");
     btn.innerHTML = `<div class="mark">⟩</div><h1>Ket OS</h1>
-      <p>内置 CPython ${st.python || st.version} · 无噪声 · F = 1</p>
+      <p>内置 CPython ${st.python || st.version} + numpy ${st.numpy || ""} · ${st.n_qubits} × float64 · 无噪声 · F = 1</p>
       <pre>${(st.log||[]).join("\n")}</pre>
       <p>点击进入桌面</p>`;
-    btn.onclick = () => { root.innerHTML = ""; paint(); setInterval(tick, 1000); };
+    btn.onclick = () => {
+      root.innerHTML = "";
+      paint();
+      const ms = (st.n_qubits || 0) >= 24 ? 2000 : 1000;
+      setInterval(tick, ms);
+    };
     root.append(btn);
   } catch (err) {
     root.innerHTML = `<div class="err">无法连接 CPython 内核：${err}<br>请用 START 脚本启动，不要直接打开 HTML。</div>`;

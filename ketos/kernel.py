@@ -1,4 +1,4 @@
-"""Ket OS kernel — CPython statevector backend, no noise, F = 1."""
+"""Ket OS kernel — CPython + numpy float64 statevector, no noise, F = 1."""
 
 from __future__ import annotations
 
@@ -6,14 +6,17 @@ import math
 import sys
 from typing import Any
 
+import numpy as np
+
 from .alu import run_alu
+from .hw import TARGET_QUBITS, choose_n, gib, sv_bytes
 from .sv import Statevector, apply_circuit
 
-N_SYS = 8
+N_SYS = TARGET_QUBITS
 FIDELITY = 1.0
 ENGINE = "ket.statevector"
 PY_VER = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-
+NP_VER = np.__version__
 
 def djb2(text: str) -> int:
     h = 5381
@@ -22,21 +25,29 @@ def djb2(text: str) -> int:
     return h
 
 
-def pack(sv: Statevector, extra: dict | None = None, shots: int | None = None) -> dict[str, Any]:
+def pack(sv: Statevector, extra: dict | None = None, shots: int | None = None, light: bool = False) -> dict[str, Any]:
     extra = extra or {}
-    probs = sv.probabilities()
-    entropy = 0.0
-    occupancy = 0
-    for p in probs:
-        if p > 1e-6:
-            occupancy += 1
-        if p > 1e-12:
-            entropy -= p * math.log2(p)
+    n = sv.n
+    if light:
+        qs = [q for q in (0, 1, 4, 5) if q < n]
+        bloch = sv.bloch(qs)
+        entropy = 0.0
+        occupancy = 0
+        amps: list[dict] = []
+        counts = None
+    else:
+        bloch = sv.bloch()
+        p = sv.probabilities()
+        occupancy = int(np.count_nonzero(p > 1e-6))
+        pp = p[p > 1e-12]
+        entropy = float(-(pp * np.log2(pp)).sum()) if pp.size else 0.0
+        amps = sv.top_amps()
+        counts = sv.sample_counts(shots) if shots else None
     out: dict[str, Any] = {
-        "n": sv.n,
-        "bloch": sv.bloch(),
-        "amps": sv.top_amps(),
-        "counts": sv.sample_counts(shots) if shots else None,
+        "n": n,
+        "bloch": bloch,
+        "amps": amps,
+        "counts": counts,
         "fidelity": FIDELITY,
         "noise": False,
         "backend": extra.get("backend", "cpython-sv"),
@@ -44,15 +55,18 @@ def pack(sv: Statevector, extra: dict | None = None, shots: int | None = None) -
         "engine": ENGINE,
         "entropy": entropy,
         "occupancy": occupancy,
+        "dtype": "float64",
+        "sv_bytes": sv_bytes(n),
+        "numpy": NP_VER,
     }
     out.update(extra)
     return out
 
 
 class Kernel:
-    def __init__(self) -> None:
-        self.n = N_SYS
-        self.sv = Statevector(N_SYS)
+    def __init__(self, n: int | None = None) -> None:
+        self.n = int(n) if n is not None else choose_n()
+        self.sv = Statevector(self.n)
         self.boot_bits: str | None = None
         self.log: list[str] = []
         self.syscalls = 0
@@ -66,6 +80,7 @@ class Kernel:
             "engine": ENGINE,
             "n_qubits": self.n,
             "allocated": self.n,
+            "target_qubits": TARGET_QUBITS,
             "fidelity": FIDELITY,
             "noise": False,
             "shots_model": "exact Born sampling",
@@ -74,6 +89,9 @@ class Kernel:
             "log": self.log[-24:],
             "python": sys.version.split()[0],
             "executable": sys.executable,
+            "dtype": "float64",
+            "sv_bytes": sv_bytes(self.n),
+            "numpy": NP_VER,
         }
 
     def handle(self, req: dict[str, Any]) -> dict[str, Any]:
@@ -84,11 +102,11 @@ class Kernel:
         elif op == "boot":
             result = self.boot()
         elif op == "register":
-            result = {**pack(self.sv), **self.status()}
+            result = {**pack(self.sv, light=False), **self.status()}
         elif op == "reset":
             self.sv = Statevector(self.n)
             self.log.append("reset ⊗ |0⟩")
-            result = {**pack(self.sv), **self.status()}
+            result = {**pack(self.sv, light=self.n > 20), **self.status()}
         elif op == "run":
             result = self.run(args)
         elif op == "syscall":
@@ -114,9 +132,8 @@ class Kernel:
     def boot(self) -> dict[str, Any]:
         self.log = []
         self.syscalls = 0
-        self.n = N_SYS
-        self.log.append(f"{self.backend_label} · Statevector · noise=off")
-        self.log.append(f"allocate {self.n} qubits in |0⟩^{self.n}")
+        self.log.append(f"{self.backend_label} · numpy {NP_VER} · float64 · noise=off")
+        self.log.append(f"allocate {self.n} qubits in |0⟩^{self.n}  ({gib(sv_bytes(self.n))})")
         self.sv = Statevector(self.n)
         ghz = apply_circuit(4, [{"g": "h", "q": 0}, {"g": "cx", "q": 0, "t": 1}, {"g": "cx", "q": 1, "t": 2}, {"g": "cx", "q": 2, "t": 3}])
         ghz_probs = {a["bit"]: a["p"] for a in ghz.top_amps(8)}
@@ -132,12 +149,14 @@ class Kernel:
         self.log.append("kernel heartbeat: Bell(q0,q1)")
         self.log.append("scheduler / fs / rng banks ready")
         self.log.append(f"interpreter {sys.executable}")
-        return {**pack(self.sv), **self.status(), "ghz_probs": ghz_probs, "boot_ok": True}
+        return {**pack(self.sv, light=self.n > 20), **self.status(), "ghz_probs": ghz_probs, "boot_ok": True}
 
     def idle(self) -> dict[str, Any]:
-        self.sv.rx(4, math.pi / 16)
-        self.sv.rz(5, math.pi / 8)
-        return {**pack(self.sv), **self.status(), "idle": True}
+        if self.n > 4:
+            self.sv.rx(4, math.pi / 16)
+        if self.n > 5:
+            self.sv.rz(5, math.pi / 8)
+        return {**pack(self.sv, light=self.n > 20), **self.status(), "idle": True}
 
     def run(self, args: dict[str, Any]) -> dict[str, Any]:
         self.syscalls += 1
@@ -292,12 +311,12 @@ class Kernel:
 
         history = []
         sv = apply_circuit(n, list(gates))
-        history.append({"iter": 0, "p_marked": sv.re[marked] ** 2 + sv.im[marked] ** 2})
+        history.append({"iter": 0, "p_marked": float(sv.re[marked] ** 2 + sv.im[marked] ** 2)})
         for k in range(iters):
             oracle()
             diffusion()
             sv = apply_circuit(n, list(gates))
-            history.append({"iter": k + 1, "p_marked": sv.re[marked] ** 2 + sv.im[marked] ** 2})
+            history.append({"iter": k + 1, "p_marked": float(sv.re[marked] ** 2 + sv.im[marked] ** 2)})
         bits = sv.measure()["bits"]
         found = int(bits, 2)
         self.log.append(f"SYS_GROVER n={n} marked={marked} → {found}")
