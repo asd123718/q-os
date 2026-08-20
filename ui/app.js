@@ -9,7 +9,7 @@ const APPS = [
   {id:"terminal",title:"终端",color:"#13a10e",w:640,h:420},
   {id:"grover",title:"Grover",color:"#9a5bd9",w:600,h:460},
   {id:"teleport",title:"量子传送",color:"#00cc6a",w:560,h:460},
-  {id:"about",title:"关于本机",color:"#4cc2ff",w:640,h:620},
+  {id:"about",title:"关于本机",color:"#4cc2ff",w:520,h:560},
 ];
 const GLYPH = {
   calc: '<rect x="7" y="4" width="18" height="24" rx="3"/><path d="M10 9h12M10 16h3v3h-3zM14.5 16h3v3h-3zM19 16h3v3h-3zM10 21h3v3h-3zM14.5 21h3v3h-3zM19 21h3v3h-3z"/>',
@@ -170,16 +170,21 @@ function applyTaskmgrChrome() {
 function applyTaskmgrQuantum(st) {
   const live = document.getElementById("taskmgr-live");
   if (!live) return;
+  const set = (id, text) => { const n = live.querySelector("#"+id); if (n) n.textContent = text; };
+  set("tm-entropy", meter.entropy.toFixed(3));
+  set("tm-occ", String(meter.occ));
+  set("tm-sys", String(meter.sys));
+  set("tm-nq", String(st.n_qubits || 28));
   const meta = live.querySelector("#tm-meta");
   if (meta) {
-    meta.textContent = `${st.backend || ""} · CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · ${st.n_qubits || 28}q float64 · entropy ${meter.entropy.toFixed(3)} · occ ${meter.occ} · syscalls ${meter.sys}`;
+    meta.textContent = `CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · float64 · 无噪声`;
   }
   const bloch = st.bloch || [];
   live.querySelectorAll("canvas").forEach(c => drawBloch(c, bloch[Number(c.dataset.q)]));
 }
 async function quantumLoop() {
   if (ticking) {
-    setTimeout(quantumLoop, 40);
+    setTimeout(quantumLoop, 50);
     return;
   }
   ticking = true;
@@ -192,7 +197,7 @@ async function quantumLoop() {
     pulseUI();
   } catch {}
   ticking = false;
-  setTimeout(quantumLoop, 40);
+  setTimeout(quantumLoop, 50);
 }
 
 function taskmgrView(st) {
@@ -202,34 +207,51 @@ function taskmgrView(st) {
   box.id = "taskmgr-live";
   box.innerHTML = `<div class="row"><div class="meter"><b>Q-CPU</b><span id="qcpu-pct">${Math.round(meter.cpu*100)}%</span><i id="qcpu-bar" style="width:${meter.cpu*100}%"></i></div>
     <div class="meter"><b>Q-MEM</b><span id="qmem-pct">${Math.round(meter.mem*100)}%</span><i id="qmem-bar" style="width:${meter.mem*100}%"></i></div></div>
-    <p class="muted" id="tm-meta">${st.backend || ""} · CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · ${st.n_qubits || 28}q float64 · entropy ${meter.entropy.toFixed(3)} · occ ${meter.occ} · syscalls ${meter.sys}</p>
-    <div class="qubits">${bloch.map((b,i)=>`<div class="q"><canvas width="56" height="56" data-q="${i}"></canvas><span>q${b.q ?? i}</span></div>`).join("")}</div>
+    <div class="tm-stats">
+      <div class="tm-stat"><small>熵</small><b id="tm-entropy">${meter.entropy.toFixed(3)}</b></div>
+      <div class="tm-stat"><small>占用</small><b id="tm-occ">${meter.occ}</b></div>
+      <div class="tm-stat"><small>系统调用</small><b id="tm-sys">${meter.sys}</b></div>
+      <div class="tm-stat"><small>量子比特</small><b id="tm-nq">${st.n_qubits || 28}</b></div>
+    </div>
+    <p class="muted" id="tm-meta">CPython ${st.python || st.version || ""} · numpy ${st.numpy || ""} · float64 · 无噪声</p>
+    <p class="muted">内核脉搏</p>
+    <div class="qubits">${[0,1,2,3].map(i=>`<div class="q"><canvas width="56" height="56" data-q="${i}"></canvas><span>q${i}</span></div>`).join("")}</div>
     <table><thead><tr><th>窗口</th><th>状态</th><th>CPU</th><th>MEM</th></tr></thead><tbody id="tm-rows">${windows.map(w=>`<tr><td>${w.title}</td><td>${w.min?"sleep":w.id===focus?"focus":"run"}</td><td>${w.min?"1%":w.id===focus?Math.round(meter.cpu*100)+"%":Math.round(meter.cpu*40)+"%"}</td><td>${w.min?"3%":"12%"}</td></tr>`).join("")}</tbody></table>`;
   queueMicrotask(() => box.querySelectorAll("canvas").forEach(c => drawBloch(c, bloch[Number(c.dataset.q)])));
   return box;
+}
+
+function shortPath(p) {
+  p = String(p || "");
+  if (!p) return "—";
+  const norm = p.replace(/\\/g, "/");
+  const parts = norm.split("/").filter(Boolean);
+  if (p.length <= 42 || parts.length <= 3) return p;
+  return "…/" + parts.slice(-3).join("/");
 }
 
 function aboutView() {
   const n = lastStatus;
   const box = el("div", "pad about");
   const rows = [
-    ["后端", n.backend],
-    ["解释器", "CPython " + (n.python || n.version || "")],
-    ["可执行文件", n.executable],
-    ["引擎", n.engine],
+    ["处理器", "CPython " + (n.python || n.version || "")],
+    ["加速库", "numpy " + (n.numpy || "")],
     ["量子比特", (n.n_qubits ?? 28) + " × float64"],
-    ["目标寄存器", (n.target_qubits ?? 28) + "q"],
-    ["态矢量", fmtBytes(n.sv_bytes)],
-    ["numpy", n.numpy],
-    ["噪声", "关"],
-    ["门保真度", "100%"],
+    ["态矢量", fmtBytes(n.sv_bytes) || "—"],
+    ["引擎", n.engine || "ket.statevector"],
+    ["噪声", "无 · 门保真度 100%"],
     ["系统调用", String(n.syscalls ?? 0)],
   ];
-  box.innerHTML = `<h2>Ket OS</h2>
-    <p class="muted">量子内核在本机 CPython 里计算，浏览器只画桌面。默认 28 个双精度量子比特，无噪声。</p>
-    <div class="spec">${rows.map(([k,v]) =>
-      `<div class="spec-row"><span class="k">${k}</span><span class="v mono" title="${String(v ?? "").replace(/"/g,"")}">${v ?? "—"}</span></div>`
-    ).join("")}</div>`;
+  const exe = n.executable || "";
+  const exeShort = shortPath(exe);
+  box.innerHTML = `<div class="about-hero">
+      <div class="logo">${tileIcon("about", 28)}</div>
+      <div><h2>Ket OS</h2><p>量子内核在本机 CPython 里算，浏览器只画桌面。</p></div>
+    </div>
+    <div class="about-card">${rows.map(([k,v]) =>
+      `<div class="kv"><span>${k}</span><b>${v ?? "—"}</b></div>`
+    ).join("")}</div>
+    <div class="about-card"><div class="kv path"><span>可执行文件</span><b title="${String(exe).replace(/"/g,"")}">${exeShort}</b></div></div>`;
   return box;
 }
 
@@ -346,7 +368,7 @@ function registerView() {
   const b = el("button", "", "重置 |0⟩"); b.onclick = () => refresh(true);
   row.append(a, b);
   const nq = lastStatus.n_qubits || 28;
-  box.append(el("p","muted",`系统寄存器 · ${nq} × float64 · numpy 向量化内核`), row, qs);
+  box.append(el("p","muted",`系统寄存器 · ${nq} × float64 · 预览 q0–q${Math.min(7, nq-1)}`), row, qs);
   refresh(false);
   return box;
 }
@@ -598,7 +620,7 @@ async function boot() {
         root.innerHTML = "";
         paint();
         pulseUI();
-        setInterval(pulseUI, 200);
+        setInterval(pulseUI, 100);
         quantumLoop();
       }, 280);
     };

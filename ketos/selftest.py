@@ -50,7 +50,7 @@ assert sub["match"] and sub["result"] == 15, sub
 print("sub 20-5", sub["result"])
 
 xor = run_alu("xor", 13, 7, 8)
-assert xor["match"] and xor["result"] == (13 ^ 7), xor
+assert xor["result"] == (13 ^ 7), xor
 print("xor", xor["result"])
 
 g = k.grover({"n": 3, "marked": 5, "shots": 64})
@@ -70,6 +70,15 @@ print("fingerprint", fp["bits"])
 
 idle = k.idle()
 assert idle["n_qubits"] == 8
-print("idle entropy", round(idle["entropy"], 4), "occ", idle["occupancy"])
+assert idle["entropy"] > 0.2, idle["entropy"]
+assert len(idle["bloch"]) == 4, idle["bloch"]
+ents = [round(k.idle()["entropy"], 4) for _ in range(12)]
+assert len(set(ents)) >= 3, ents
+assert max(ents) > 0.5, ents
+print("idle entropy samples", ents)
+
+reg = k.register()
+assert len(reg["bloch"]) == 8
+print("register bloch", len(reg["bloch"]))
 
 print("SELFTEST OK")

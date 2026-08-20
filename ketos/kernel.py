@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import sys
+import threading
 from typing import Any
 
 import numpy as np
@@ -17,6 +18,7 @@ FIDELITY = 1.0
 ENGINE = "ket.statevector"
 PY_VER = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 NP_VER = np.__version__
+
 
 def djb2(text: str) -> int:
     h = 5381
@@ -37,6 +39,16 @@ def _qubit_entropy(b: dict) -> float:
     if p1 > 1e-12:
         e -= p1 * math.log2(p1)
     return e
+
+
+def _new_pulse() -> Statevector:
+    """Tiny 4-qubit oscillator for the desktop heartbeat. Never touches the 28q register."""
+    p = Statevector(4)
+    p.h(0)
+    p.h(1)
+    p.h(2)
+    p.cx(2, 3)
+    return p
 
 
 def pack(sv: Statevector, extra: dict | None = None, shots: int | None = None, light: bool = False) -> dict[str, Any]:
@@ -81,6 +93,8 @@ class Kernel:
     def __init__(self, n: int | None = None) -> None:
         self.n = int(n) if n is not None else choose_n()
         self.sv = Statevector(self.n)
+        self.pulse = _new_pulse()
+        self._lock = threading.Lock()
         self.boot_bits: str | None = None
         self.log: list[str] = []
         self.syscalls = 0
@@ -111,41 +125,43 @@ class Kernel:
     def handle(self, req: dict[str, Any]) -> dict[str, Any]:
         op = req.get("op")
         args = req.get("args") or {}
-        if op in ("ping", "status"):
-            result = self.status()
-        elif op == "boot":
-            result = self.boot()
-        elif op == "register":
-            result = {**pack(self.sv, light=False), **self.status()}
-        elif op == "reset":
-            self.sv = Statevector(self.n)
-            self.log.append("reset ⊗ |0⟩")
-            result = {**pack(self.sv, light=self.n > 20), **self.status()}
-        elif op == "run":
-            result = self.run(args)
-        elif op == "syscall":
-            result = self.syscall(str(args.get("name") or ""), args)
-        elif op == "teleport":
-            result = self.teleport(args)
-        elif op == "grover":
-            result = self.grover(args)
-        elif op == "add":
-            result = self.add(args)
-        elif op == "alu":
-            result = self.alu(args)
-        elif op == "encode":
-            result = self.encode(args)
-        elif op == "idle":
-            result = self.idle()
-        else:
-            raise ValueError(f"unknown op {op}")
-        if "syscalls" not in result:
-            result = {**self.status(), **result}
-        return result
+        with self._lock:
+            if op in ("ping", "status"):
+                result = self.status()
+            elif op == "boot":
+                result = self.boot()
+            elif op == "register":
+                result = self.register()
+            elif op == "reset":
+                self.sv = Statevector(self.n)
+                self.log.append("reset ⊗ |0⟩")
+                result = {**pack(self.sv, light=self.n > 20), **self.status()}
+            elif op == "run":
+                result = self.run(args)
+            elif op == "syscall":
+                result = self.syscall(str(args.get("name") or ""), args)
+            elif op == "teleport":
+                result = self.teleport(args)
+            elif op == "grover":
+                result = self.grover(args)
+            elif op == "add":
+                result = self.add(args)
+            elif op == "alu":
+                result = self.alu(args)
+            elif op == "encode":
+                result = self.encode(args)
+            elif op == "idle":
+                result = self.idle()
+            else:
+                raise ValueError(f"unknown op {op}")
+            if "syscalls" not in result:
+                result = {**self.status(), **result}
+            return result
 
     def boot(self) -> dict[str, Any]:
         self.log = []
         self.syscalls = 0
+        self.pulse = _new_pulse()
         self.log.append(f"{self.backend_label} · numpy {NP_VER} · float64 · noise=off")
         self.log.append(f"allocate {self.n} qubits in |0⟩^{self.n}  ({gib(sv_bytes(self.n))})")
         self.sv = Statevector(self.n)
@@ -166,11 +182,42 @@ class Kernel:
         return {**pack(self.sv, light=self.n > 20), **self.status(), "ghz_probs": ghz_probs, "boot_ok": True}
 
     def idle(self) -> dict[str, Any]:
-        if self.n > 4:
-            self.sv.rx(4, math.pi / 16)
-        if self.n > 5:
-            self.sv.rz(5, math.pi / 8)
-        return {**pack(self.sv, light=self.n > 20), **self.status(), "idle": True}
+        # Always tick the 4-qubit pulse (microseconds). Never apply2 the 28q / 4 GiB
+        # register just to animate Task Manager — that is what made "sync" look like 1 Hz.
+        self.pulse.rx(0, math.pi / 17)
+        self.pulse.ry(1, math.pi / 19)
+        self.pulse.rz(2, math.pi / 13)
+        self.pulse.rx(3, math.pi / 15)
+        if self.n <= 16:
+            if self.n > 4:
+                self.sv.rx(4, math.pi / 16)
+            if self.n > 5:
+                self.sv.rz(5, math.pi / 8)
+        packed = pack(self.pulse)
+        return {
+            **packed,
+            **self.status(),
+            "entropy": packed["entropy"],
+            "occupancy": packed["occupancy"],
+            "bloch": packed["bloch"],
+            "amps": packed.get("amps") or [],
+            "idle": True,
+        }
+
+    def register(self) -> dict[str, Any]:
+        qs = list(range(min(8, self.n)))
+        bloch = self.sv.bloch(qs)
+        return {
+            **self.status(),
+            "bloch": bloch,
+            "amps": [] if self.n > 20 else self.sv.top_amps(),
+            "entropy": float(sum(_qubit_entropy(b) for b in bloch)),
+            "occupancy": int(2 + sum(1 for b in bloch if float(b.get("purity") or 1) < 0.995)),
+            "fidelity": FIDELITY,
+            "n": self.n,
+            "noise": False,
+            "dtype": "float64",
+        }
 
     def run(self, args: dict[str, Any]) -> dict[str, Any]:
         self.syscalls += 1
