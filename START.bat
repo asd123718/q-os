@@ -2,6 +2,8 @@
 setlocal
 cd /d "%~dp0"
 set KETOS_ROOT=%~dp0
+set PYTHONUNBUFFERED=1
+set KETOS_QUIET=1
 if exist "runtime\py\python.exe" goto numpy
 if not exist "runtime\cpython-3.12.14-windows-x86_64.tar.gz" (
   echo Missing bundled interpreter: runtime\cpython-3.12.14-windows-x86_64.tar.gz
@@ -21,5 +23,9 @@ echo Installing bundled numpy (offline)...
 :run
 set KETOS_HOST=127.0.0.1
 set KETOS_PORT=8080
+echo.
+echo Ket OS  http://127.0.0.1:8080/
+echo Close this window to stop.
+echo.
 "runtime\py\python.exe" -B "%~dp0ketos\server.py"
 if errorlevel 1 pause
