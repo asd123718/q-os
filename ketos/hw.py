@@ -11,6 +11,7 @@ MAX_QUBITS = 28
 MIN_QUBITS = 2
 BYTES_PER_AMP = 16  # complex128 = 2 × float64
 OS_HEADROOM = 4 << 30
+GPU_HEADROOM = 512 << 20
 
 
 def sv_bytes(n: int) -> int:
@@ -56,12 +57,28 @@ def ram_bytes() -> int:
     return 8 << 30
 
 
+def probe_cuda() -> dict | None:
+    try:
+        from .cuda_api import probe
+
+        return probe()
+    except Exception:
+        return None
+
+
 def choose_n(target: int = TARGET_QUBITS) -> int:
     env = os.environ.get("KETOS_QUBITS")
     if env:
         return max(MIN_QUBITS, min(MAX_QUBITS, int(env)))
-    ram = ram_bytes()
     target = max(MIN_QUBITS, min(MAX_QUBITS, int(target)))
+    force_cpu = os.environ.get("KETOS_DEVICE", "").lower() in ("cpu", "numpy", "host")
+    if not force_cpu:
+        gpu = probe_cuda()
+        if gpu:
+            for n in range(target, 7, -1):
+                if int(gpu["vram"]) >= sv_bytes(n) + GPU_HEADROOM:
+                    return n
+    ram = ram_bytes()
     for n in range(target, 7, -1):
         need = int(sv_bytes(n) * 2.0) + OS_HEADROOM
         if ram >= need:
