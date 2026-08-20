@@ -190,10 +190,21 @@ textarea{min-height:160px;width:100%}
 .q{display:flex;flex-direction:column;align-items:center;font-size:calc(11px * var(--s));color:var(--muted)}
 .meter{flex:1;border:1px solid var(--stroke);background:rgba(0,0,0,.2);border-radius:12px;padding:10px 10px 22px;position:relative}
 .meter i{position:absolute;left:10px;bottom:10px;height:6px;background:var(--accent);border-radius:99px;transition:width .18s var(--ease)}
-.spec{display:flex;flex-direction:column;gap:8px;margin-top:8px}
-.spec-row{display:flex;flex-direction:column;gap:4px;padding:12px 14px;background:rgba(255,255,255,.04);border:1px solid var(--stroke);border-radius:8px}
-.spec-row .k{font-size:calc(11px * var(--s));color:var(--muted);letter-spacing:.06em}
-.spec-row .v{font-size:calc(13px * var(--s));line-height:1.45;word-break:break-all}
+.about-hero{display:flex;align-items:center;gap:14px;margin-bottom:4px}
+.about-hero .logo{width:calc(52px * var(--s));height:calc(52px * var(--s));border-radius:12px;background:#1a1d22;display:grid;place-items:center;color:var(--accent);flex-shrink:0;box-shadow:0 8px 20px rgba(0,0,0,.28)}
+.about-hero h2{margin:0;font-size:calc(22px * var(--s));font-weight:600;letter-spacing:.02em}
+.about-hero p{margin:4px 0 0;color:var(--muted);font-size:calc(13px * var(--s));line-height:1.45}
+.about-card{margin-top:12px;background:rgba(255,255,255,.045);border:1px solid var(--stroke);border-radius:8px;overflow:hidden}
+.kv{display:grid;grid-template-columns:calc(96px * var(--s)) 1fr;gap:12px;padding:11px 16px;border-bottom:1px solid var(--stroke);align-items:baseline}
+.kv:last-child{border-bottom:0}
+.kv span{color:var(--muted);font-size:calc(12px * var(--s));line-height:1.4}
+.kv b{font-weight:600;font-size:calc(13px * var(--s));line-height:1.45;word-break:break-word;overflow-wrap:anywhere}
+.kv.path{grid-template-columns:1fr;gap:4px}
+.kv.path b{font-family:var(--mono);font-weight:500;font-size:calc(12px * var(--s));color:rgba(243,245,247,.82)}
+.tm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tm-stat{background:rgba(255,255,255,.045);border:1px solid var(--stroke);border-radius:8px;padding:10px 12px}
+.tm-stat small{display:block;color:var(--muted);font-size:calc(11px * var(--s));letter-spacing:.04em}
+.tm-stat b{display:block;font-size:calc(20px * var(--s));font-variant-numeric:tabular-nums;margin-top:4px;font-weight:600;font-family:var(--mono);line-height:1.1}
 .meter span{float:right;font-family:var(--mono)}
 table{width:100%;border-collapse:collapse;font-size:calc(12px * var(--s))}
 td,th{border-bottom:1px solid var(--stroke);padding:6px;text-align:left}
@@ -206,8 +217,6 @@ td,th{border-bottom:1px solid var(--stroke);padding:6px;text-align:left}
 .frow.on{background:rgba(255,255,255,.06)}
 .term pre{min-height:240px;background:rgba(0,0,0,.28);padding:8px;overflow:auto}
 .danger{color:#e08882}
-dl{display:grid;grid-template-columns:calc(120px * var(--s)) 1fr;gap:6px;font-size:calc(13px * var(--s))}
-dt{color:var(--muted)}
 .err{color:#e08882;padding:24px;font-family:var(--mono)}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none !important;transition:none !important}
@@ -216,6 +225,6 @@ dt{color:var(--muted)}
 </head>
 <body>
 <div id="root"></div>
-<script src="app.js?v=qa1"></script>
+<script src="app.js?v=tm2"></script>
 </body>
 </html>
